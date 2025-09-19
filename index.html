@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cascades Analytics Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+        }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .metric-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+        .metric-card:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.15);
+        }
+        .sidebar-item {
+            transition: all 0.2s ease;
+        }
+        .sidebar-item:hover {
+            transform: translateX(4px);
+        }
+        .active-item {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+    <div class="min-h-screen flex">
+        <!-- Sidebar -->
+        <div class="w-80 bg-slate-800 text-white flex flex-col">
+            <!-- Header -->
+            <div class="p-6 border-b border-slate-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-xl font-bold">THE CASCADES</h1>
+                        <p class="text-sm text-slate-400">NEOPOLIS ANALYTICS</p>
+                    </div>
+                    <i class="fas fa-times text-slate-400 cursor-pointer hover:text-white"></i>
+                </div>
+                <div class="mt-4">
+                    <p class="text-sm text-slate-300">Executive Dashboard</p>
+                </div>
+            </div>
+
+            <!-- Navigation Items -->
+            <div class="flex-1 p-4 space-y-2">
+                <div class="sidebar-item p-4 rounded-lg cursor-pointer active-item">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-chart-bar text-lg mt-0.5"></i>
+                        <div>
+                            <h3 class="font-medium">Executive Overview</h3>
+                            <p class="text-sm text-slate-400">High-level performance metrics</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-item p-4 rounded-lg cursor-pointer hover:bg-slate-700">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-search text-lg mt-0.5"></i>
+                        <div>
+                            <h3 class="font-medium">Google Ecosystem</h3>
+                            <p class="text-sm text-slate-400">Search, Display, YouTube analysis</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-item p-4 rounded-lg cursor-pointer hover:bg-slate-700">
+                    <div class="flex items-start gap-3">
+                        <i class="fab fa-facebook text-lg mt-0.5"></i>
+                        <div>
+                            <h3 class="font-medium">Meta Universe</h3>
+                            <p class="text-sm text-slate-400">Facebook & Instagram campaigns</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-item p-4 rounded-lg cursor-pointer hover:bg-slate-700">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-bullseye text-lg mt-0.5"></i>
+                        <div>
+                            <h3 class="font-medium">Programmatic</h3>
+                            <p class="text-sm text-slate-400">DV360 and programmatic buying</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-item p-4 rounded-lg cursor-pointer hover:bg-slate-700">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-trending-up text-lg mt-0.5"></i>
+                        <div>
+                            <h3 class="font-medium">Performance Trends</h3>
+                            <p class="text-sm text-slate-400">Weekly and daily analytics</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-item p-4 rounded-lg cursor-pointer hover:bg-slate-700">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-chart-line text-lg mt-0.5"></i>
+                        <div>
+                            <h3 class="font-medium">Industry Benchmarks</h3>
+                            <p class="text-sm text-slate-400">Market comparison analysis</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-item p-4 rounded-lg cursor-pointer hover:bg-slate-700">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-bolt text-lg mt-0.5"></i>
+                        <div>
+                            <h3 class="font-medium">Strategic Insights</h3>
+                            <p class="text-sm text-slate-400">AI-powered recommendations</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-item p-4 rounded-lg cursor-pointer hover:bg-slate-700">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-book text-lg mt-0.5"></i>
+                        <div>
+                            <h3 class="font-medium">Knowledge Center</h3>
+                            <p class="text-sm text-slate-400">Terms, formulas & education</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col">
+            <!-- Top Bar -->
+            <div class="bg-white border-b border-gray-200 px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <span class="text-sm text-gray-500">Content is user-generated and unverified.</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-2 text-sm text-gray-600">
+                            <i class="fas fa-eye"></i>
+                            <span>19</span>
+                        </div>
+                        <i class="fas fa-link text-gray-600"></i>
+                        <div class="flex items-center gap-2 bg-black text-white px-3 py-1.5 rounded text-sm">
+                            <i class="fas fa-cog"></i>
+                            Customize
+                        </div>
+                        <i class="fas fa-expand text-gray-600"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Header -->
+            <div class="bg-white px-6 py-6 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-3xl font-bold text-gray-900">Overview</h1>
+                        <p class="text-gray-600 mt-1">📋 The Cascades Neopolis • August 2025 Performance Analytics</p>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <select class="bg-white border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option>All Channels</option>
+                            <option>Google Ads</option>
+                            <option>Facebook</option>
+                            <option>Instagram</option>
+                        </select>
+                        <select class="bg-white border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option>August 2025</option>
+                            <option>July 2025</option>
+                            <option>June 2025</option>
+                        </select>
+                        <button class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                            <i class="fas fa-download mr-2"></i>
+                            Export Report
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Content -->
+            <div class="flex-1 p-6 bg-gray-50">
+                <!-- Performance Summary Card -->
+                <div class="gradient-bg rounded-2xl p-6 text-white mb-6 relative overflow-hidden">
+                    <div class="absolute inset-0 bg-gradient-to-r from-blue-600 opacity-20"></div>
+                    <div class="relative">
+                        <div class="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 class="text-2xl font-bold mb-2">Executive Performance Summary</h2>
+                                <p class="text-slate-300">August 2025 • Campaign Performance Dashboard</p>
+                            </div>
+                            <div class="flex items-center gap-2 bg-green-500 bg-opacity-20 text-green-400 px-3 py-1.5 rounded-full text-sm">
+                                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                                Target Exceeded
+                            </div>
+                        </div>
+
+                        <!-- Metrics Grid -->
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <!-- Investment Card -->
+                            <div class="metric-card rounded-xl p-6">
+                                <div class="flex items-center justify-between mb-4">
+                                    <i class="fas fa-dollar-sign text-2xl text-blue-400"></i>
+                                    <span class="text-sm text-slate-300">Investment</span>
+                                </div>
+                                <div class="space-y-2">
+                                    <div class="text-3xl font-bold">₹7,17,140</div>
+                                    <div class="text-slate-300">of ₹7,00,000 approved</div>
+                                    <div class="text-green-400 text-sm">102.4% utilization</div>
+                                </div>
+                            </div>
+
+                            <!-- Leads Card -->
+                            <div class="metric-card rounded-xl p-6">
+                                <div class="flex items-center justify-between mb-4">
+                                    <i class="fas fa-users text-2xl text-green-400"></i>
+                                    <span class="text-sm text-slate-300">Leads</span>
+                                </div>
+                                <div class="space-y-2">
+                                    <div class="text-3xl font-bold">533</div>
+                                    <div class="text-slate-300">vs 345 target</div>
+                                    <div class="text-green-400 text-sm">159% achievement</div>
+                                </div>
+                            </div>
+
+                            <!-- Efficiency Card -->
+                            <div class="metric-card rounded-xl p-6">
+                                <div class="flex items-center justify-between mb-4">
+                                    <i class="fas fa-crosshairs text-2xl text-purple-400"></i>
+                                    <span class="text-sm text-slate-300">Efficiency</span>
+                                </div>
+                                <div class="space-y-2">
+                                    <div class="text-3xl font-bold">₹1,345</div>
+                                    <div class="text-slate-300">blended CPL</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Additional Content Area -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Performance Chart Placeholder -->
+                    <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                        <h3 class="text-lg font-semibold mb-4">Performance Trends</h3>
+                        <div class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
+                            <div class="text-center text-gray-500">
+                                <i class="fas fa-chart-line text-4xl mb-2 text-gray-400"></i>
+                                <p>Chart visualization would go here</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Insights -->
+                    <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                        <h3 class="text-lg font-semibold mb-4">Quick Insights</h3>
+                        <div class="space-y-4">
+                            <div class="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
+                                <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span class="text-sm">Campaign performance exceeded targets by 59%</span>
+                            </div>
+                            <div class="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                                <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                <span class="text-sm">Cost per lead optimized to ₹1,345</span>
+                            </div>
+                            <div class="flex items-center gap-3 p-3 bg-purple-50 rounded-lg">
+                                <div class="w-2 h-2 bg-purple-500 rounded-full"></div>
+                                <span class="text-sm">Budget utilization at optimal 102.4%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
