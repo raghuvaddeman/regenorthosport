@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
-import { encrypt } from '@/lib/crypto/credentials';
+import { encrypt, maskSecret } from '@/lib/crypto/credentials';
 
 /**
  * GET: Fetch all active/configured providers for the logged-in clinic workspace
@@ -45,20 +45,48 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { provider_key, provider_name, category, secret_key, config_json } = body;
+    const { provider_key, provider_name, category, secrets, config_json } = body;
 
-    if (!provider_key || !provider_name || !category || !secret_key) {
+    if (!provider_key || !provider_name || !category || !secrets || typeof secrets !== 'object') {
       return NextResponse.json(
         { success: false, error: 'Missing mandatory provider registration parameters.' },
         { status: 400 }
       );
     }
 
-    const encryptedCredentials = encrypt(secret_key);
-    const maskLen = secret_key.length;
-    const credential_mask = maskLen <= 8 ? '****' : `${secret_key.substring(0, 4)}****${secret_key.substring(maskLen - 4)}`;
-
     const supabase = getSupabaseAdmin();
+
+    // Merge with any previously stored credential fields so leaving a field
+    // blank on an update preserves its existing encrypted value.
+    const { data: existingRow } = await supabase
+      .from('providers')
+      .select('encrypted_credentials, credential_mask')
+      .eq('client_id', clientId)
+      .eq('provider_key', provider_key)
+      .maybeSingle();
+
+    let credentialMap: Record<string, string> = {};
+    let maskMap: Record<string, string> = {};
+    try {
+      if (existingRow?.encrypted_credentials) credentialMap = JSON.parse(existingRow.encrypted_credentials);
+      if (existingRow?.credential_mask) maskMap = JSON.parse(existingRow.credential_mask);
+    } catch {
+      // ignore malformed legacy data and start fresh
+    }
+
+    for (const [field, value] of Object.entries(secrets)) {
+      if (typeof value !== 'string' || !value) continue;
+      credentialMap[field] = encrypt(value);
+      maskMap[field] = maskSecret(value);
+    }
+
+    if (Object.keys(credentialMap).length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'At least one credential value is required.' },
+        { status: 400 }
+      );
+    }
+
     const { data, error } = await supabase
       .from('providers')
       .upsert({
@@ -67,8 +95,8 @@ export async function POST(request: NextRequest) {
         provider_name,
         category,
         config_json: config_json || {},
-        encrypted_credentials: encryptedCredentials,
-        credential_mask,
+        encrypted_credentials: JSON.stringify(credentialMap),
+        credential_mask: JSON.stringify(maskMap),
         status: 'connected',
         updated_at: new Date().toISOString(),
       }, { onConflict: 'client_id,provider_key' })

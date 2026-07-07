@@ -49,12 +49,22 @@ function humanizeField(field: string) {
     .replace(/^\w/, (c) => c.toUpperCase());
 }
 
+function parseMaskMap(raw: string | undefined): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function ProviderManagementDashboard() {
   const [activeCategory, setActiveCategory] = useState<ProviderCategory>(PROVIDER_CATEGORIES[0]);
   const [search, setSearch] = useState("");
   const [configured, setConfigured] = useState<ConfiguredProvider[]>([]);
   const [selectedKey, setSelectedKey] = useState<ProviderKey | null>(null);
-  const [secretValue, setSecretValue] = useState("");
+  const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -92,7 +102,7 @@ export default function ProviderManagementDashboard() {
 
   function handleSelectProvider(key: ProviderKey) {
     setSelectedKey(key);
-    setSecretValue("");
+    setSecretValues({});
     setBanner(null);
 
     const existing = getConnected(key);
@@ -101,6 +111,10 @@ export default function ProviderManagementDashboard() {
 
   function handleFieldChange(field: string, value: string) {
     setConfigValues((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function handleSecretChange(field: string, value: string) {
+    setSecretValues((prev) => ({ ...prev, [field]: value }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -118,7 +132,7 @@ export default function ProviderManagementDashboard() {
           provider_key: selectedKey,
           provider_name: selectedMeta.provider_name,
           category: selectedMeta.category,
-          secret_key: secretValue,
+          secrets: secretValues,
           config_json: configValues,
         }),
       });
@@ -126,7 +140,7 @@ export default function ProviderManagementDashboard() {
       const result = await res.json();
       if (result.success) {
         setBanner({ type: "success", message: `${selectedMeta.provider_name} saved successfully.` });
-        setSecretValue("");
+        setSecretValues({});
         await fetchConnectedProviders();
       } else {
         setBanner({ type: "error", message: result.error || "Something went wrong." });
@@ -264,25 +278,30 @@ export default function ProviderManagementDashboard() {
                 </div>
               )}
 
-              {/* Primary secret field */}
-              <div className="mb-4">
-                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                  <KeyRound className="h-3.5 w-3.5" />
-                  {humanizeField(selectedMeta.secretField)}
-                </label>
-                <input
-                  type="password"
-                  required={!selectedConnection}
-                  value={secretValue}
-                  onChange={(e) => setSecretValue(e.target.value)}
-                  placeholder={
-                    selectedConnection
-                      ? `Currently ${selectedConnection.credential_mask} — enter a new value to change it`
-                      : `Enter your ${humanizeField(selectedMeta.secretField).toLowerCase()}`
-                  }
-                  className={inputClasses}
-                />
-              </div>
+              {/* Encrypted credential fields */}
+              {selectedMeta.secretFields.map((field) => {
+                const existingMask = parseMaskMap(selectedConnection?.credential_mask)[field];
+                return (
+                  <div key={field} className="mb-4">
+                    <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      <KeyRound className="h-3.5 w-3.5" />
+                      {humanizeField(field)}
+                    </label>
+                    <input
+                      type="password"
+                      required={!existingMask}
+                      value={secretValues[field] || ""}
+                      onChange={(e) => handleSecretChange(field, e.target.value)}
+                      placeholder={
+                        existingMask
+                          ? `Currently ${existingMask} — enter a new value to change it`
+                          : `Enter your ${humanizeField(field).toLowerCase()}`
+                      }
+                      className={inputClasses}
+                    />
+                  </div>
+                );
+              })}
 
               {/* Remaining config fields */}
               {selectedMeta.fields.map((field) => (
