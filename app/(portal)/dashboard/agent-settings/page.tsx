@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Bot,
   BrainCircuit,
@@ -37,6 +38,14 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+interface ConnectedProvider {
+  id: string;
+  provider_key: string;
+  provider_name: string;
+  category: string;
+  status: string;
+}
 
 /* ------------------------------ UI building blocks ------------------------------ */
 
@@ -284,10 +293,33 @@ export default function AgentSettingsPage() {
   const [agentName, setAgentName] = useState("Priya");
 
   // LLM tab
-  const [provider, setProvider] = useState<"azure" | "openai">("azure");
+  const [provider, setProvider] = useState("");
   const [model, setModel] = useState("gpt-4o");
   const [temperature, setTemperature] = useState(0.4);
   const [maxTokens, setMaxTokens] = useState(250);
+  const [llmProviders, setLlmProviders] = useState<ConnectedProvider[]>([]);
+  const [loadingLlmProviders, setLoadingLlmProviders] = useState(true);
+
+  useEffect(() => {
+    async function fetchLlmProviders() {
+      try {
+        const res = await fetch("/api/providers");
+        const json = await res.json();
+        if (json.success) {
+          const connected = (json.data as ConnectedProvider[]).filter(
+            (p) => p.category === "llm" && p.status === "connected"
+          );
+          setLlmProviders(connected);
+          setProvider((prev) => prev || connected[0]?.provider_key || "");
+        }
+      } catch {
+        // leave llmProviders empty; the UI will prompt to connect one
+      } finally {
+        setLoadingLlmProviders(false);
+      }
+    }
+    fetchLlmProviders();
+  }, []);
 
   // Audio tab
   const [voice, setVoice] = useState("aria");
@@ -422,23 +454,41 @@ export default function AgentSettingsPage() {
       {activeTab === "llm" && (
         <div className="space-y-6">
           <SectionCard title="Model provider" description="Choose which LLM backend powers the agent.">
-            <Field label="Provider">
-              <SegmentedControl
-                value={provider}
-                onChange={setProvider}
-                options={[
-                  { value: "azure", label: "Azure OpenAI" },
-                  { value: "openai", label: "OpenAI" },
-                ]}
-              />
-            </Field>
-            <Field label="Model" hint={`Routed through ${provider === "azure" ? "Azure OpenAI" : "OpenAI"}.`}>
-              <SelectInput value={model} onChange={(e) => setModel(e.target.value)}>
-                <option value="gpt-4o">gpt-4o</option>
-                <option value="gpt-4o-mini">gpt-4o-mini</option>
-                <option value="gpt-4.1">gpt-4.1</option>
-              </SelectInput>
-            </Field>
+            {loadingLlmProviders ? (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading connected providers…</p>
+            ) : llmProviders.length === 0 ? (
+              <div className="flex flex-col items-start gap-3">
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                  No LLM providers are connected yet. Connect one to power this agent.
+                </p>
+                <Link
+                  href="/dashboard/providers"
+                  className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+                >
+                  🔌 Connect an LLM Provider
+                </Link>
+              </div>
+            ) : (
+              <>
+                <Field label="Provider">
+                  <SegmentedControl
+                    value={provider}
+                    onChange={setProvider}
+                    options={llmProviders.map((p) => ({ value: p.provider_key, label: p.provider_name }))}
+                  />
+                </Field>
+                <Field
+                  label="Model"
+                  hint={`Routed through ${llmProviders.find((p) => p.provider_key === provider)?.provider_name ?? ""}.`}
+                >
+                  <SelectInput value={model} onChange={(e) => setModel(e.target.value)}>
+                    <option value="gpt-4o">gpt-4o</option>
+                    <option value="gpt-4o-mini">gpt-4o-mini</option>
+                    <option value="gpt-4.1">gpt-4.1</option>
+                  </SelectInput>
+                </Field>
+              </>
+            )}
           </SectionCard>
 
           <SectionCard title="Generation parameters">

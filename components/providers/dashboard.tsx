@@ -164,7 +164,7 @@ export default function ProviderManagementDashboard() {
       </header>
 
       {/* Category tabs */}
-      <div className="mb-6 flex flex-wrap gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 p-1.5 dark:border-zinc-800 dark:bg-zinc-900/60">
+      <div className="mb-6 flex flex-wrap gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 p-1.5 dark:border-zinc-800 dark:bg-zinc-900">
         {CATEGORY_TABS.map(({ key, label, icon: Icon }) => {
           const active = activeCategory === key;
           return (
