@@ -1,0 +1,107 @@
+"use client";
+import React, { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard, PhoneCall, Users, Settings, Database,
+  PhoneForwarded, FileText, BrainCircuit, ShieldAlert, Radio, Phone, CreditCard, Menu, X
+} from "lucide-react";
+
+const navigationData = [
+  {
+    groupName: "Practice Overview",
+    items: [
+      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { label: "Call Logs", href: "/dashboard/calls", icon: PhoneCall },
+      { label: "Patient Database", href: "/dashboard/patients", icon: Users },
+    ],
+  },
+  {
+    groupName: "AI Voice Agent Config",
+    items: [
+      { label: "Agent Settings", href: "/dashboard/agent-settings", icon: Settings },
+      { label: "Knowledge Base", href: "/dashboard/knowledge-base", icon: Database },
+      { label: "Voicemail & Routing", href: "/dashboard/routing", icon: PhoneForwarded },
+    ],
+  },
+  {
+    groupName: "Insights & Compliance",
+    items: [
+      { label: "Transcripts & Summaries", href: "/dashboard/transcripts", icon: FileText },
+      { label: "Sentiment Analysis", href: "/dashboard/sentiment", icon: BrainCircuit },
+      { label: "Audit Logs", href: "/dashboard/audit-logs", icon: ShieldAlert },
+    ],
+  },
+  {
+    groupName: "Platform Integrations",
+    items: [
+      { label: "EHR / EMR Sync", href: "/dashboard/ehr-sync", icon: Radio, isBeta: true },
+      { label: "Phone Numbers", href: "/dashboard/numbers", icon: Phone },
+      { label: "Billing & Usage", href: "/dashboard/billing", icon: CreditCard },
+    ],
+  },
+];
+
+export default function Sidebar() {
+  const pathname = usePathname();
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="fixed top-4 left-4 z-50 rounded-md border border-gray-200 bg-white p-2 text-gray-600 shadow-sm transition-colors hover:bg-gray-50 md:hidden dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-900"
+        aria-label={isOpen ? "Close menu" : "Open menu"}
+        aria-expanded={isOpen}
+      >
+        {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+      </button>
+
+      {isOpen && <div onClick={() => setIsOpen(false)} className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-xs md:hidden dark:bg-black/40" />}
+
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 transform flex-col border-r border-gray-200 bg-white transition-transform duration-200 ease-in-out md:translate-x-0 md:static ${isOpen ? "translate-x-0" : "-translate-x-full"} dark:border-gray-800 dark:bg-gray-950`}>
+        <div className="flex h-16 items-center border-b border-gray-200 px-6 dark:border-gray-800">
+          <Link href="/dashboard" className="flex items-center gap-2.5 font-semibold tracking-tight text-gray-900 dark:text-white">
+            <svg viewBox="0 0 76 65" className="h-4 w-auto fill-current"><path d="M37.5274 0L75.0548 65H0L37.5274 0Z"/></svg>
+            <span className="text-sm">CallWise Portal</span>
+          </Link>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto p-4 space-y-6">
+          {navigationData.map((group, gIdx) => (
+            <div key={gIdx} className="space-y-1.5">
+              <h4 className="px-3 text-[10px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">{group.groupName}</h4>
+              <ul className="space-y-0.5">
+                {group.items.map((item, iIdx) => {
+                  const isActive = item.href === "/dashboard" ? pathname === "/dashboard" : pathname === item.href || pathname.startsWith(item.href + "/");
+                  const Icon = item.icon;
+                  return (
+                    <li key={iIdx}>
+                      <Link href={item.href} onClick={() => setIsOpen(false)} aria-current={isActive ? "page" : undefined} className={`flex items-center justify-between rounded-md px-3 py-1.5 text-sm font-medium transition-all ${isActive ? "bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-white" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-900/50 dark:hover:text-gray-200"}`}>
+                        <div className="flex items-center gap-2.5">
+                          <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-gray-900 dark:text-white" : "text-gray-400 dark:text-gray-500"}`} />
+                          <span>{item.label}</span>
+                        </div>
+                        {item.isBeta && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-gray-600 uppercase dark:bg-gray-800 dark:text-gray-400">Beta</span>}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
+
+        <div className="border-t border-gray-200 p-4 dark:border-gray-800">
+          <div className="flex items-center gap-3 rounded-lg p-2">
+            <div className="h-7 w-7 rounded-full bg-gray-900 flex items-center justify-center text-[11px] font-medium text-white dark:bg-gray-100 dark:text-gray-900">DM</div>
+            <div className="overflow-hidden">
+              <p className="truncate text-xs font-medium text-gray-900 dark:text-white">Dr. Movva</p>
+              <p className="truncate text-[11px] text-gray-400 dark:text-gray-500">Orthopedic Portal</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+}
