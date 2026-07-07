@@ -1,0 +1,76 @@
+/* app/globals.css
+   ───────────────────────────────────────────────────────────────
+   TAILWIND v4 (default in current create-next-app):
+   keep this file as-is. The @custom-variant line makes `dark:`
+   classes follow our .dark <html> class instead of the OS setting,
+   and @theme maps the next/font variables into Tailwind's
+   font-sans / font-mono utilities.
+
+   TAILWIND v3 (if your generated project has a tailwind.config.ts
+   with `content: [...]`): delete everything below and use the v3
+   block at the bottom of this file instead, plus tailwind.config.ts
+   from this bundle's README.
+   ─────────────────────────────────────────────────────────────── */
+
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  --font-mono: var(--font-mono), monospace;
+}
+
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+
+::selection {
+  background: rgb(99 102 241 / 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   TAILWIND v3 ALTERNATIVE — replace everything above with:
+
+   @tailwind base;
+   @tailwind components;
+   @tailwind utilities;
+
+   :root { color-scheme: light; }
+   .dark { color-scheme: dark; }
+   ::selection { background: rgb(99 102 241 / 0.25); }
+   @media (prefers-reduced-motion: reduce) {
+     *, *::before, *::after {
+       animation-duration: 0.01ms !important;
+       transition-duration: 0.01ms !important;
+     }
+   }
+
+   ...and use this tailwind.config.ts:
+
+   import type { Config } from "tailwindcss";
+   export default {
+     darkMode: "class",
+     content: ["./app/** /*.{ts,tsx}", "./lib/** /*.{ts,tsx}"],  // remove spaces in globs
+     theme: {
+       extend: {
+         fontFamily: {
+           sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+           mono: ["var(--font-mono)", "monospace"],
+         },
+       },
+     },
+   } satisfies Config;
+   ─────────────────────────────────────────────────────────────── */
