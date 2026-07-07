@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Phone,
   BrainCircuit,
@@ -60,6 +61,7 @@ function parseMaskMap(raw: string | undefined): Record<string, string> {
 }
 
 export default function ProviderManagementDashboard() {
+  const searchParams = useSearchParams();
   const [activeCategory, setActiveCategory] = useState<ProviderCategory>(PROVIDER_CATEGORIES[0]);
   const [search, setSearch] = useState("");
   const [configured, setConfigured] = useState<ConfiguredProvider[]>([]);
@@ -72,6 +74,13 @@ export default function ProviderManagementDashboard() {
   useEffect(() => {
     fetchConnectedProviders();
   }, []);
+
+  useEffect(() => {
+    const categoryParam = searchParams.get("category");
+    if (categoryParam && (PROVIDER_CATEGORIES as readonly string[]).includes(categoryParam)) {
+      setActiveCategory(categoryParam as ProviderCategory);
+    }
+  }, [searchParams]);
 
   async function fetchConnectedProviders() {
     try {
