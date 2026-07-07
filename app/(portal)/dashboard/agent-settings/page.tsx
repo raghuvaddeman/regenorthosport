@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Bot,
   BrainCircuit,
@@ -12,6 +12,9 @@ import {
   PhoneIncoming,
   Save,
   Sparkles,
+  Info,
+  TrendingUp,
+  TrendingDown,
   PhoneIncoming as InboundIcon,
   Voicemail,
   UserCheck,
@@ -36,6 +39,9 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 /* ------------------------------ UI building blocks ------------------------------ */
+
+const inputClasses =
+  "w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100";
 
 function SectionCard({
   title,
@@ -62,16 +68,30 @@ function SectionCard({
 function Field({
   label,
   hint,
+  tooltip,
+  valueLabel,
   children,
 }: {
   label: string;
   hint?: string;
+  tooltip?: string;
+  valueLabel?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="grid gap-2 sm:grid-cols-3 sm:gap-4">
       <div className="sm:col-span-1">
-        <label className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{label}</label>
+        <div className="flex items-center gap-1.5">
+          <label className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{label}</label>
+          {tooltip && (
+            <span title={tooltip} className="inline-flex cursor-help">
+              <Info className="h-3.5 w-3.5 shrink-0 text-zinc-400 dark:text-zinc-500" />
+            </span>
+          )}
+          {valueLabel && (
+            <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400">{valueLabel}</span>
+          )}
+        </div>
         {hint && <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{hint}</p>}
       </div>
       <div className="sm:col-span-2">{children}</div>
@@ -80,12 +100,11 @@ function Field({
 }
 
 function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      {...props}
-      className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-    />
-  );
+  return <input {...props} className={inputClasses} />;
+}
+
+function SelectInput(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select {...props} className={inputClasses} />;
 }
 
 function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
@@ -165,12 +184,14 @@ function Toggle({
   onChange,
   label,
   description,
+  tooltip,
   icon: Icon,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
   description?: string;
+  tooltip?: string;
   icon?: React.ElementType;
 }) {
   return (
@@ -182,7 +203,14 @@ function Toggle({
           </span>
         )}
         <div>
-          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{label}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{label}</p>
+            {tooltip && (
+              <span title={tooltip} className="inline-flex cursor-help">
+                <Info className="h-3.5 w-3.5 shrink-0 text-zinc-400 dark:text-zinc-500" />
+              </span>
+            )}
+          </div>
           {description && (
             <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{description}</p>
           )}
@@ -207,11 +235,29 @@ function Toggle({
   );
 }
 
-function KpiCard({ label, value }: { label: string; value: string }) {
+function KpiCard({
+  label,
+  value,
+  delta,
+  up,
+}: {
+  label: string;
+  value: string;
+  delta: string;
+  up: boolean;
+}) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="group rounded-xl border border-zinc-200 bg-white p-5 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800/60">
       <p className="text-xs font-medium uppercase tracking-wider text-zinc-400">{label}</p>
       <p className="mt-2 font-mono text-2xl font-semibold tabular-nums tracking-tight">{value}</p>
+      <div
+        className={`mt-1.5 inline-flex items-center gap-1 text-xs font-medium ${
+          up ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-500 dark:text-zinc-400"
+        }`}
+      >
+        {up ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+        {delta}
+      </div>
     </div>
   );
 }
@@ -248,6 +294,9 @@ export default function AgentSettingsPage() {
   const [outputFormat, setOutputFormat] = useState<"pcm16" | "mp3" | "mulaw">("pcm16");
   const [speakingRate, setSpeakingRate] = useState(1.0);
   const [denoise, setDenoise] = useState(true);
+  const [ambientProfile, setAmbientProfile] = useState<"clinic-quiet" | "office-ambience">(
+    "clinic-quiet"
+  );
 
   // Engine tab
   const [interruptionWords, setInterruptionWords] = useState(3);
@@ -281,9 +330,27 @@ export default function AgentSettingsPage() {
     setTimeout(() => setSaved(false), 2000);
   }
 
+  // Tracks scroll position so the sticky action bar can pick up a hairline
+  // border + blur once the page has scrolled past it.
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    function onScroll() {
+      setScrolled(window.scrollY > 4);
+    }
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div
+        className={`sticky top-14 z-20 -mx-6 flex flex-col gap-4 px-6 py-4 transition-colors sm:flex-row sm:items-center sm:justify-between lg:-mx-10 lg:px-10 ${
+          scrolled
+            ? "border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/80"
+            : "border-b border-transparent"
+        }`}
+      >
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Agent Settings</h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
@@ -366,23 +433,23 @@ export default function AgentSettingsPage() {
               />
             </Field>
             <Field label="Model" hint={`Routed through ${provider === "azure" ? "Azure OpenAI" : "OpenAI"}.`}>
-              <select
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-              >
+              <SelectInput value={model} onChange={(e) => setModel(e.target.value)}>
                 <option value="gpt-4o">gpt-4o</option>
                 <option value="gpt-4o-mini">gpt-4o-mini</option>
                 <option value="gpt-4.1">gpt-4.1</option>
-              </select>
+              </SelectInput>
             </Field>
           </SectionCard>
 
           <SectionCard title="Generation parameters">
-            <Field label="Temperature" hint="Lower is more deterministic and on-script.">
+            <Field
+              label="Temperature"
+              hint="Lower is more deterministic and on-script."
+              valueLabel={`${temperature}`}
+            >
               <Slider value={temperature} onChange={setTemperature} min={0} max={1} step={0.1} />
             </Field>
-            <Field label="Max response tokens">
+            <Field label="Max response tokens" valueLabel={`${maxTokens}`}>
               <Slider value={maxTokens} onChange={setMaxTokens} min={50} max={800} step={10} />
             </Field>
           </SectionCard>
@@ -394,15 +461,11 @@ export default function AgentSettingsPage() {
         <div className="space-y-6">
           <SectionCard title="Voice" description="Text-to-speech voice and output format.">
             <Field label="Voice">
-              <select
-                value={voice}
-                onChange={(e) => setVoice(e.target.value)}
-                className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-              >
+              <SelectInput value={voice} onChange={(e) => setVoice(e.target.value)}>
                 <option value="aria">Aria — warm, professional</option>
                 <option value="nova">Nova — bright, energetic</option>
                 <option value="sage">Sage — calm, measured</option>
-              </select>
+              </SelectInput>
             </Field>
             <Field label="Output format">
               <SegmentedControl
@@ -415,7 +478,7 @@ export default function AgentSettingsPage() {
                 ]}
               />
             </Field>
-            <Field label="Speaking rate">
+            <Field label="Speaking rate" valueLabel={`${speakingRate}x`}>
               <Slider value={speakingRate} onChange={setSpeakingRate} min={0.5} max={1.5} step={0.05} suffix="x" />
             </Field>
           </SectionCard>
@@ -427,6 +490,18 @@ export default function AgentSettingsPage() {
               label="Background noise suppression"
               description="Filters ambient noise from the caller's line before transcription."
             />
+            <Field
+              label="Ambient noise profile"
+              hint="Calibrates noise suppression to the room the agent is deployed in."
+            >
+              <SelectInput
+                value={ambientProfile}
+                onChange={(e) => setAmbientProfile(e.target.value as typeof ambientProfile)}
+              >
+                <option value="clinic-quiet">Clinic Room (Absolute Quiet)</option>
+                <option value="office-ambience">Active Front-Desk Ambience</option>
+              </SelectInput>
+            </Field>
           </SectionCard>
         </div>
       )}
@@ -441,10 +516,15 @@ export default function AgentSettingsPage() {
             <Field
               label="Interruption word count"
               hint="Minimum words the caller must speak before interrupting the agent."
+              valueLabel={`${interruptionWords} words`}
             >
               <Slider value={interruptionWords} onChange={setInterruptionWords} min={1} max={10} suffix=" words" />
             </Field>
-            <Field label="Endpointing delay" hint="Silence duration before the agent assumes the caller has finished speaking.">
+            <Field
+              label="Patient Pause Timeout"
+              tooltip="How long the AI waits for the patient to finish speaking before replying."
+              valueLabel={`${endpointingMs}ms`}
+            >
               <Slider value={endpointingMs} onChange={setEndpointingMs} min={200} max={2000} step={50} suffix="ms" />
             </Field>
           </SectionCard>
@@ -453,8 +533,8 @@ export default function AgentSettingsPage() {
             <Toggle
               checked={backchannel}
               onChange={setBackchannel}
-              label="Backchannel responses"
-              description="Agent inserts brief acknowledgements ('mm-hmm', 'got it') while listening."
+              label="Muted Listening Affirmations"
+              tooltip="Allows the AI to make subtle verbal nods like 'mm-hmm' or 'got it' while the patient tells their story."
             />
           </SectionCard>
         </div>
@@ -464,10 +544,14 @@ export default function AgentSettingsPage() {
       {activeTab === "call" && (
         <div className="space-y-6">
           <SectionCard title="Call limits">
-            <Field label="Max call duration">
+            <Field label="Max call duration" valueLabel={`${maxCallMinutes} min`}>
               <Slider value={maxCallMinutes} onChange={setMaxCallMinutes} min={1} max={30} suffix=" min" />
             </Field>
-            <Field label="Silence timeout" hint="Ends the call if the caller is silent for this long.">
+            <Field
+              label="Silence timeout"
+              hint="Ends the call if the caller is silent for this long."
+              valueLabel={`${silenceTimeoutSec}s`}
+            >
               <Slider value={silenceTimeoutSec} onChange={setSilenceTimeoutSec} min={3} max={30} suffix="s" />
             </Field>
           </SectionCard>
@@ -529,9 +613,9 @@ export default function AgentSettingsPage() {
       {activeTab === "analytics" && (
         <div className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-3">
-            <KpiCard label="Calls this month" value="482" />
-            <KpiCard label="Avg. handle time" value="3:42" />
-            <KpiCard label="Task success rate" value="91%" />
+            <KpiCard label="Calls this month" value="482" delta="+12% vs last week" up />
+            <KpiCard label="Avg. handle time" value="3:42" delta="-4% vs last week" up={false} />
+            <KpiCard label="Task success rate" value="91%" delta="+3% vs last week" up />
           </div>
           <SectionCard title="About this tab">
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
