@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, PhoneCall, Users, Settings, Database,
-  PhoneForwarded, FileText, BrainCircuit, ShieldAlert, Radio, Phone, CreditCard, Menu, X
+  PhoneForwarded, FileText, BrainCircuit, ShieldAlert, Radio, Phone, CreditCard, Plug, Menu, X
 } from "lucide-react";
 
 const navigationData = [
@@ -35,6 +35,7 @@ const navigationData = [
   {
     groupName: "Platform Integrations",
     items: [
+      { label: "Providers", href: "/dashboard/providers", icon: Plug },
       { label: "EHR / EMR Sync", href: "/dashboard/ehr-sync", icon: Radio, isBeta: true },
       { label: "Phone Numbers", href: "/dashboard/numbers", icon: Phone },
       { label: "Billing & Usage", href: "/dashboard/billing", icon: CreditCard },
