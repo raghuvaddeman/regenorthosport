@@ -1,33 +1,72 @@
+export const PROVIDER_CATEGORIES = ["telephony", "llm", "tts", "stt", "tools"] as const;
+export type ProviderCategory = (typeof PROVIDER_CATEGORIES)[number];
+
 export const PROVIDER_REGISTRY = {
-  twilio: { 
-    category: "telephony", 
+  vobiz: {
+    category: "telephony",
+    provider_name: "Vobiz",
+    secretField: "apiKey",
+    fields: ["phoneNumber"]
+  },
+  twilio: {
+    category: "telephony",
     provider_name: "Twilio",
-    fields: ["accountSid", "authToken", "phoneNumber"] 
+    secretField: "authToken",
+    fields: ["accountSid", "phoneNumber"]
   },
-  openai: { 
-    category: "llm", 
+  openai: {
+    category: "llm",
     provider_name: "OpenAI",
-    fields: ["apiKey"] 
+    secretField: "apiKey",
+    fields: []
   },
-  azure_openai: { 
-    category: "llm", 
+  azure_openai: {
+    category: "llm",
     provider_name: "Azure OpenAI",
-    fields: ["apiKey", "baseUrl", "region"] 
+    secretField: "apiKey",
+    fields: ["baseUrl", "region"]
   },
-  deepgram: { 
-    category: "stt", 
-    provider_name: "Deepgram",
-    fields: ["apiKey"] 
-  },
-  elevenlabs: { 
-    category: "tts", 
+  elevenlabs: {
+    category: "tts",
     provider_name: "ElevenLabs",
-    fields: ["apiKey", "voiceId"] 
+    secretField: "apiKey",
+    fields: ["voiceId"]
   },
-  zoho_crm: { 
-    category: "tools", 
+  sarvam_tts: {
+    category: "tts",
+    provider_name: "Sarvam",
+    secretField: "apiKey",
+    fields: []
+  },
+  deepgram: {
+    category: "stt",
+    provider_name: "Deepgram",
+    secretField: "apiKey",
+    fields: []
+  },
+  sarvam_stt: {
+    category: "stt",
+    provider_name: "Sarvam",
+    secretField: "apiKey",
+    fields: []
+  },
+  zoho_crm: {
+    category: "tools",
     provider_name: "Zoho CRM",
-    fields: ["clientId", "clientSecret", "refreshToken", "dataCenter", "organizationId", "baseApiUrl"] 
+    secretField: "clientSecret",
+    fields: ["clientId", "refreshToken", "dataCenter", "organizationId", "baseApiUrl"]
+  },
+  salesforce: {
+    category: "tools",
+    provider_name: "Salesforce",
+    secretField: "clientSecret",
+    fields: ["clientId", "refreshToken", "instanceUrl"]
+  },
+  selldo: {
+    category: "tools",
+    provider_name: "Sell.Do",
+    secretField: "apiKey",
+    fields: ["baseUrl"]
   }
 } as const;
 

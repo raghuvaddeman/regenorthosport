@@ -1,7 +1,24 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { PROVIDER_REGISTRY, ProviderKey } from '@/lib/registry';
+import { useEffect, useMemo, useState } from "react";
+import {
+  Phone,
+  BrainCircuit,
+  AudioLines,
+  Mic,
+  Wrench,
+  Search,
+  Plug,
+  KeyRound,
+  LoaderCircle,
+  CircleCheck,
+} from "lucide-react";
+import {
+  PROVIDER_REGISTRY,
+  PROVIDER_CATEGORIES,
+  type ProviderKey,
+  type ProviderCategory,
+} from "@/lib/registry";
 
 interface ConfiguredProvider {
   id: string;
@@ -10,241 +27,296 @@ interface ConfiguredProvider {
   category: string;
   status: string;
   credential_mask: string;
-  config_json: Record<string, any>;
+  config_json: Record<string, string>;
+  last_tested_at: string | null;
+}
+
+const CATEGORY_TABS: { key: ProviderCategory; label: string; icon: typeof Phone }[] = [
+  { key: "telephony", label: "Telephony", icon: Phone },
+  { key: "llm", label: "LLM", icon: BrainCircuit },
+  { key: "tts", label: "TTS", icon: AudioLines },
+  { key: "stt", label: "STT", icon: Mic },
+  { key: "tools", label: "Tools", icon: Wrench },
+];
+
+const inputClasses =
+  "w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-600";
+
+function humanizeField(field: string) {
+  return field
+    .replace(/([A-Z])/g, " $1")
+    .trim()
+    .replace(/^\w/, (c) => c.toUpperCase());
 }
 
 export default function ProviderManagementDashboard() {
-  const [activeTab, setActiveTab] = useState<'connected' | 'add'>('connected');
+  const [activeCategory, setActiveCategory] = useState<ProviderCategory>(PROVIDER_CATEGORIES[0]);
+  const [search, setSearch] = useState("");
   const [configured, setConfigured] = useState<ConfiguredProvider[]>([]);
-  const [selectedKey, setSelectedKey] = useState<ProviderKey>('twilio');
-  const [loading, setLoading] = useState(false);
-  
-  // Dynamic form state collector
-  const [secretKey, setSecretKey] = useState('');
-  const [configFields, setConfigFields] = useState<Record<string, string>>({});
+  const [selectedKey, setSelectedKey] = useState<ProviderKey | null>(null);
+  const [secretValue, setSecretValue] = useState("");
+  const [configValues, setConfigValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [banner, setBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  // Fetch active connected accounts on mount
   useEffect(() => {
     fetchConnectedProviders();
   }, []);
 
   async function fetchConnectedProviders() {
     try {
-      const res = await fetch('/api/providers');
+      const res = await fetch("/api/providers");
       const json = await res.json();
       if (json.success) setConfigured(json.data);
-    } catch (err) {
-      console.error('Error loading current provider stack:', err);
+    } catch {
+      // list stays empty; the panel below will simply show everything as disconnected
     }
   }
 
-  const handleFieldChange = (fieldName: string, value: string) => {
-    setConfigFields(prev => ({ ...prev, [fieldName]: value }));
-  };
+  const filteredEntries = useMemo(() => {
+    return (Object.entries(PROVIDER_REGISTRY) as [ProviderKey, (typeof PROVIDER_REGISTRY)[ProviderKey]][])
+      .filter(([, meta]) => meta.category === activeCategory)
+      .filter(([, meta]) => meta.provider_name.toLowerCase().includes(search.toLowerCase()));
+  }, [activeCategory, search]);
 
-  async function handleRegisterProvider(e: React.FormEvent) {
+  const getConnected = (key: ProviderKey) => configured.find((c) => c.provider_key === key);
+
+  const selectedMeta = selectedKey ? PROVIDER_REGISTRY[selectedKey] : null;
+  const selectedConnection = selectedKey ? getConnected(selectedKey) : undefined;
+
+  function handleSelectCategory(category: ProviderCategory) {
+    setActiveCategory(category);
+    setSelectedKey(null);
+    setBanner(null);
+  }
+
+  function handleSelectProvider(key: ProviderKey) {
+    setSelectedKey(key);
+    setSecretValue("");
+    setBanner(null);
+
+    const existing = getConnected(key);
+    setConfigValues(existing?.config_json ?? {});
+  }
+
+  function handleFieldChange(field: string, value: string) {
+    setConfigValues((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    if (!selectedKey || !selectedMeta) return;
 
-    const providerMeta = PROVIDER_REGISTRY[selectedKey];
-    
+    setSaving(true);
+    setBanner(null);
+
     try {
-      const res = await fetch('/api/providers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider_key: selectedKey,
-          provider_name: providerMeta.provider_name,
-          category: providerMeta.category,
-          secret_key: secretKey,
-          config_json: configFields
-        })
+          provider_name: selectedMeta.provider_name,
+          category: selectedMeta.category,
+          secret_key: secretValue,
+          config_json: configValues,
+        }),
       });
 
       const result = await res.json();
       if (result.success) {
-        alert(`${providerMeta.provider_name} integrated successfully!`);
-        setSecretKey('');
-        setConfigFields({});
-        fetchConnectedProviders();
-        setActiveTab('connected');
+        setBanner({ type: "success", message: `${selectedMeta.provider_name} saved successfully.` });
+        setSecretValue("");
+        await fetchConnectedProviders();
       } else {
-        alert(`Integration error: ${result.error}`);
+        setBanner({ type: "error", message: result.error || "Something went wrong." });
       }
-    } catch (error) {
-      alert('Network transaction fault occurred.');
+    } catch {
+      setBanner({ type: "error", message: "Network error — please try again." });
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px', fontFamily: 'sans-serif', color: '#111827' }}>
-      <header style={{ marginBottom: '32px' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: 'bold', letterSpacing: '-0.025em', marginBottom: '8px' }}>Integrations</h1>
-        <p style={{ color: '#4B5563', margin: 0 }}>Manage secure API access credentials and integrations for your clinic workspace.</p>
+    <div className="mx-auto max-w-6xl">
+      <header className="mb-6">
+        <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-white">
+          Providers &amp; Tools
+        </h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          Add keys securely to connect your own providers.
+        </p>
       </header>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #E5E7EB', marginBottom: '24px', gap: '24px' }}>
-        <button
-          onClick={() => setActiveTab('connected')}
-          style={{
-            paddingBottom: '12px',
-            fontSize: '14px',
-            fontWeight: 500,
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: activeTab === 'connected' ? '#2563EB' : '#6B7280',
-            borderBottom: activeTab === 'connected' ? '2px solid #2563EB' : '2px solid transparent'
-          }}
-        >
-          Connected Platforms ({configured.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('add')}
-          style={{
-            paddingBottom: '12px',
-            fontSize: '14px',
-            fontWeight: 500,
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: activeTab === 'add' ? '#2563EB' : '#6B7280',
-            borderBottom: activeTab === 'add' ? '2px solid #2563EB' : '2px solid transparent'
-          }}
-        >
-          + Add New Integration
-        </button>
+      {/* Category tabs */}
+      <div className="mb-6 flex flex-wrap gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 p-1.5 dark:border-zinc-800 dark:bg-zinc-900/60">
+        {CATEGORY_TABS.map(({ key, label, icon: Icon }) => {
+          const active = activeCategory === key;
+          return (
+            <button
+              key={key}
+              onClick={() => handleSelectCategory(key)}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                active
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-white"
+                  : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Content Panels */}
-      {activeTab === 'connected' ? (
-        <div>
-          {configured.length === 0 ? (
-            <div style={{ padding: '48px 24px', textAlign: 'center', backgroundColor: '#F9FAFB', borderRadius: '12px', border: '1px dashed #E5E7EB' }}>
-              <p style={{ color: '#6B7280', marginBottom: '16px' }}>No provider connections configured yet.</p>
-              <button onClick={() => setActiveTab('add')} style={{ backgroundColor: '#2563EB', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 500 }}>
-                Setup First Connection
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-              {configured.map((item) => (
-                <div key={item.id} style={{ border: '1px solid #E5E7EB', borderRadius: '12px', padding: '20px', backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <h3 style={{ fontSize: '16px', fontWeight: 'bold', margin: 0 }}>{item.provider_name}</h3>
-                    <span style={{ fontSize: '12px', backgroundColor: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: '9999px', fontWeight: 500, textTransform: 'capitalize' }}>
-                      {item.status}
-                    </span>
-                  </div>
-                  <p style={{ textTransform: 'uppercase', fontSize: '11px', color: '#9CA3AF', margin: '0 0 16px 0', fontWeight: 600, letterSpacing: '0.05em' }}>
-                    Category: {item.category}
-                  </p>
-                  <div style={{ backgroundColor: '#F3F4F6', borderRadius: '6px', padding: '10px 12px', fontSize: '13px', color: '#4B5563', fontFamily: 'monospace' }}>
-                    Key mask: {item.credential_mask}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '32px', alignItems: 'start' }}>
-          {/* Left Picker */}
-          <div style={{ border: '1px solid #E5E7EB', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'white' }}>
-            {Object.entries(PROVIDER_REGISTRY).map(([key, value]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => {
-                  setSelectedKey(key as ProviderKey);
-                  setSecretKey('');
-                  setConfigFields({});
-                }}
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '14px 16px',
-                  background: selectedKey === key ? '#F0F5FF' : 'none',
-                  border: 'none',
-                  borderBottom: '1px solid #E5E7EB',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '4px'
-                }}
-              >
-                <span style={{ fontWeight: 600, fontSize: '14px', color: selectedKey === key ? '#1D4ED8' : '#111827' }}>
-                  {value.provider_name}
-                </span>
-                <span style={{ fontSize: '12px', color: '#6B7280', textTransform: 'capitalize' }}>
-                  Category: {value.category}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          {/* Right Form Engine */}
-          <form onSubmit={handleRegisterProvider} style={{ border: '1px solid #E5E7EB', borderRadius: '12px', padding: '24px', backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '20px' }}>
-              Configure {PROVIDER_REGISTRY[selectedKey].provider_name}
-            </h2>
-
-            {/* Core Secret Input */}
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
-                Primary Secret Key / Main API Token *
-              </label>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
+        {/* Left: filtered provider list */}
+        <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="border-b border-zinc-200 p-3 dark:border-zinc-800">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
               <input
-                type="password"
-                required
-                value={secretKey}
-                onChange={(e) => setSecretKey(e.target.value)}
-                placeholder="Paste the raw confidential security token here"
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '14px', boxSizing: 'border-box' }}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search providers…"
+                className="w-full rounded-md border border-zinc-200 bg-zinc-50 py-1.5 pl-8 pr-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
               />
             </div>
+          </div>
 
-            {/* Dynamic Config Parameters */}
-            {PROVIDER_REGISTRY[selectedKey].fields.map((field) => (
-              <div key={field} style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
-                  {field.replace(/([A-Z])/g, ' $1').trim().replace(/^\w/, c => c.toUpperCase())} *
+          <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            {filteredEntries.length === 0 && (
+              <li className="px-4 py-6 text-center text-sm text-zinc-400 dark:text-zinc-600">
+                No providers match.
+              </li>
+            )}
+            {filteredEntries.map(([key, meta]) => {
+              const connection = getConnected(key);
+              const isConnected = !!connection;
+              const isSelected = selectedKey === key;
+              return (
+                <li key={key}>
+                  <button
+                    onClick={() => handleSelectProvider(key)}
+                    className={`flex w-full items-center justify-between px-4 py-3 text-left text-sm transition-colors ${
+                      isSelected
+                        ? "bg-zinc-100 dark:bg-zinc-800"
+                        : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 font-medium text-zinc-800 dark:text-zinc-100">
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          isConnected ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-700"
+                        }`}
+                        aria-label={isConnected ? "Connected" : "Not connected"}
+                      />
+                      {meta.provider_name}
+                    </span>
+                    {isConnected && (
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                        Connected
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        {/* Right: dynamic configuration form */}
+        <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
+          {!selectedMeta ? (
+            <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-2 text-center text-zinc-400 dark:text-zinc-600">
+              <Plug className="h-6 w-6" />
+              <p className="text-sm">Select a provider from the list to configure it.</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-zinc-900 dark:text-white">
+                    {selectedMeta.provider_name}
+                  </h2>
+                  <p className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+                    {selectedMeta.category}
+                  </p>
+                </div>
+                {selectedConnection && (
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                    <CircleCheck className="h-3.5 w-3.5" />
+                    Connected
+                  </span>
+                )}
+              </div>
+
+              {banner && (
+                <div
+                  className={`mb-4 rounded-lg px-3 py-2 text-sm ${
+                    banner.type === "success"
+                      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                      : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400"
+                  }`}
+                >
+                  {banner.message}
+                </div>
+              )}
+
+              {/* Primary secret field */}
+              <div className="mb-4">
+                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                  <KeyRound className="h-3.5 w-3.5" />
+                  {humanizeField(selectedMeta.secretField)}
                 </label>
                 <input
-                  type="text"
-                  required
-                  value={configFields[field] || ''}
-                  onChange={(e) => handleFieldChange(field, e.target.value)}
-                  placeholder={`Enter your ${field}`}
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '14px', boxSizing: 'border-box' }}
+                  type="password"
+                  required={!selectedConnection}
+                  value={secretValue}
+                  onChange={(e) => setSecretValue(e.target.value)}
+                  placeholder={
+                    selectedConnection
+                      ? `Currently ${selectedConnection.credential_mask} — enter a new value to change it`
+                      : `Enter your ${humanizeField(selectedMeta.secretField).toLowerCase()}`
+                  }
+                  className={inputClasses}
                 />
               </div>
-            ))}
 
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                backgroundColor: loading ? '#9CA3AF' : '#2563EB',
-                color: 'white',
-                padding: '12px 20px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                fontWeight: 600,
-                fontSize: '14px',
-                width: '100%',
-                marginTop: '12px'
-              }}
-            >
-              {loading ? 'Saving Integration Connection...' : `Connect ${PROVIDER_REGISTRY[selectedKey].provider_name}`}
-            </button>
-          </form>
+              {/* Remaining config fields */}
+              {selectedMeta.fields.map((field) => (
+                <div key={field} className="mb-4">
+                  <label className="mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                    {humanizeField(field)}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={configValues[field] || ""}
+                    onChange={(e) => handleFieldChange(field, e.target.value)}
+                    placeholder={`Enter ${humanizeField(field).toLowerCase()}`}
+                    className={inputClasses}
+                  />
+                </div>
+              ))}
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+              >
+                {saving && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                {saving
+                  ? "Saving…"
+                  : selectedConnection
+                    ? `Update ${selectedMeta.provider_name}`
+                    : `Connect ${selectedMeta.provider_name}`}
+              </button>
+            </form>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
