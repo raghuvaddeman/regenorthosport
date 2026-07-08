@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import {
@@ -9,6 +10,23 @@ import {
   listOutboundTrunks,
   listDispatchRules,
 } from '@/lib/telephony/livekit-sip';
+
+/**
+ * Allows server-to-server / terminal (curl) callers to authenticate with a
+ * shared secret instead of a Clerk session, via the `x-internal-secret`
+ * header. Only enabled when INTERNAL_SECRET_KEY is set — never falls open.
+ */
+function isAuthorizedInternalRequest(request: NextRequest): boolean {
+  const secret = process.env.INTERNAL_SECRET_KEY;
+  const provided = request.headers.get('x-internal-secret');
+  if (!secret || !provided) return false;
+
+  const secretBuf = Buffer.from(secret);
+  const providedBuf = Buffer.from(provided);
+  if (secretBuf.length !== providedBuf.length) return false;
+
+  return crypto.timingSafeEqual(secretBuf, providedBuf);
+}
 
 /**
  * GET: Report the current LiveKit <-> Vobiz SIP infrastructure status
@@ -48,7 +66,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
-    if (!userId) {
+    if (!userId && !isAuthorizedInternalRequest(request)) {
       return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
     }
 
