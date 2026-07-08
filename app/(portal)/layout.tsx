@@ -31,7 +31,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
 
       {/* ---------- Page container ---------- */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-end gap-1 border-b border-zinc-200 bg-white px-4 dark:border-zinc-700 dark:bg-zinc-900 md:px-6">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-end gap-1 border-b border-zinc-200 bg-white px-4 dark:border-zinc-600 dark:bg-zinc-800 md:px-6">
           <span className="mr-auto text-xs text-zinc-400">
             {loading
               ? "Syncing from Supabase…"
@@ -44,7 +44,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
             onClick={() => void refresh()}
             disabled={loading}
             aria-label="Refresh calls"
-            className="rounded-md p-2 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-100"
+            className="rounded-md p-2 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-zinc-100"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -52,7 +52,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
           <button
             onClick={() => setDark((d) => !d)}
             aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-            className="rounded-md p-2 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-100"
+            className="rounded-md p-2 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-zinc-100"
           >
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
@@ -60,7 +60,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
           <button
             onClick={handleSignOut}
             aria-label="Sign out"
-            className="rounded-md p-2 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-100"
+            className="rounded-md p-2 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-zinc-100"
           >
             <LogOut className="h-4 w-4" />
           </button>

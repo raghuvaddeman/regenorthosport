@@ -56,7 +56,7 @@ function RatingBadge({ value }: { value: number }) {
 
 function ClientBadge({ id }: { id: string }) {
   return (
-    <span className="inline-flex max-w-[11rem] items-center truncate rounded-md border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs capitalize text-zinc-600 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+    <span className="inline-flex max-w-[11rem] items-center truncate rounded-md border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs capitalize text-zinc-600 dark:border-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">
       {clientLabel(id)}
     </span>
   );
@@ -76,7 +76,7 @@ function KpiCard({
   up: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-800">
+    <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-600 dark:bg-zinc-700">
       <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
         <Icon className="h-4 w-4" />
         {label}
@@ -122,9 +122,9 @@ function CallSlideOver({ call, onClose }: { call: Call; onClose: () => void }) {
         <div
           className={`max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed ${
             isAgent
-              ? "border-l-2 border-indigo-500 bg-zinc-100 dark:bg-zinc-700/80"
-              : "border-r-2 border-emerald-500 bg-white dark:bg-zinc-800"
-          } border border-zinc-200 dark:border-zinc-700`}
+              ? "border-l-2 border-indigo-500 bg-zinc-100 dark:bg-zinc-600/80"
+              : "border-r-2 border-emerald-500 bg-white dark:bg-zinc-700"
+          } border border-zinc-200 dark:border-zinc-600`}
         >
           <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
             {isAgent ? "AI agent" : "Caller"}
@@ -145,9 +145,9 @@ function CallSlideOver({ call, onClose }: { call: Call; onClose: () => void }) {
       <aside
         role="dialog"
         aria-label={`Call detail ${call.uuid}`}
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-zinc-200 bg-zinc-50 shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
+        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-zinc-200 bg-zinc-50 shadow-2xl dark:border-zinc-600 dark:bg-zinc-800"
       >
-        <div className="flex items-start justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-700">
+        <div className="flex items-start justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-600">
           <div>
             <div className="font-mono text-xs text-zinc-400">{call.uuid}</div>
             <div className="mt-1 flex items-center gap-2">
@@ -162,13 +162,13 @@ function CallSlideOver({ call, onClose }: { call: Call; onClose: () => void }) {
           <button
             onClick={onClose}
             aria-label="Close call detail"
-            className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+            className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-600 dark:hover:text-zinc-200"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-700">
+        <div className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-600">
           <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">
             <Sparkles className="h-3.5 w-3.5" /> AI summary
           </div>
@@ -179,7 +179,7 @@ function CallSlideOver({ call, onClose }: { call: Call; onClose: () => void }) {
 
         <div className="flex-1 space-y-3 overflow-y-auto px-6 py-5">{turns}</div>
 
-        <div className="flex items-center gap-3 border-t border-zinc-200 bg-white px-6 py-3 dark:border-zinc-700 dark:bg-zinc-800">
+        <div className="flex items-center gap-3 border-t border-zinc-200 bg-white px-6 py-3 dark:border-zinc-600 dark:bg-zinc-700">
           <button
             onClick={toggle}
             className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-indigo-600 text-white hover:bg-indigo-500"
@@ -323,10 +323,10 @@ export default function DashboardPage() {
       </div>
 
       {/* Call logs table */}
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-600 dark:bg-zinc-700">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-zinc-200 text-xs uppercase tracking-wider text-zinc-400 dark:border-zinc-700">
+            <thead className="border-b border-zinc-200 text-xs uppercase tracking-wider text-zinc-400 dark:border-zinc-600">
               <tr>
                 <th className="px-4 py-3 font-medium">{header("When", "at")}</th>
                 <th className="px-4 py-3 font-medium">{header("Client", "clientId")}</th>
@@ -337,7 +337,7 @@ export default function DashboardPage() {
                 <th className="px-4 py-3 font-medium"><span className="sr-only">Recording</span></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-700/70">
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-600/70">
               {loading && processedCalls.length === 0 && (
                 <tr>
                   <td colSpan={7} className="text-center py-8 text-zinc-400 animate-pulse">
@@ -355,7 +355,7 @@ export default function DashboardPage() {
               {processedCalls.map((c) => (
                 <tr
                   key={c.uuid}
-                  className="group cursor-pointer transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-700/40"
+                  className="group cursor-pointer transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-600/40"
                   onClick={() => setOpen(c)}
                 >
                   <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-zinc-500 dark:text-zinc-400">
@@ -383,7 +383,7 @@ export default function DashboardPage() {
                       className={`grid h-7 w-7 place-items-center rounded-full border transition-colors ${
                         rowAudio === c.uuid
                           ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
-                          : "border-zinc-200 text-zinc-400 hover:border-indigo-500 hover:text-indigo-600 dark:border-zinc-600 dark:hover:text-indigo-400"
+                          : "border-zinc-200 text-zinc-400 hover:border-indigo-500 hover:text-indigo-600 dark:border-zinc-500 dark:hover:text-indigo-400"
                       }`}
                     >
                       {rowAudio === c.uuid ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 pl-px" />}

@@ -36,13 +36,13 @@ export function CallLogsView() {
               placeholder="Search conversations..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-md border border-zinc-200 bg-white pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900"
+              className="w-full rounded-md border border-zinc-200 bg-white pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
             />
           </div>
           <select
             value={minRating}
             onChange={(e) => setMinRating(e.target.value)}
-            className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900"
+            className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
           >
             <option value="0">All Ratings</option>
             <option value="4">4★ & Above</option>
@@ -52,11 +52,11 @@ export function CallLogsView() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden dark:border-zinc-700 dark:bg-zinc-900">
+      <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden dark:border-zinc-600 dark:bg-zinc-800">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead>
-              <tr className="border-b border-zinc-200 bg-zinc-50/70 text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800/50">
+              <tr className="border-b border-zinc-200 bg-zinc-50/70 text-zinc-500 dark:border-zinc-600 dark:bg-zinc-700/50">
                 <th className="p-4 font-medium">Timestamp</th>
                 <th className="p-4 font-medium">Customer Phone</th>
                 <th className="p-4 font-medium">Duration</th>
@@ -65,7 +65,7 @@ export function CallLogsView() {
                 <th className="p-4 font-medium text-right">Playback</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-700">
+            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-600">
               {loading && filteredCalls.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-zinc-400 animate-pulse">
@@ -80,7 +80,7 @@ export function CallLogsView() {
                 filteredCalls.map((c) => {
                   const isCurrent = currentCall?.uuid === c.uuid && isPlaying;
                   return (
-                    <tr key={c.uuid} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30">
+                    <tr key={c.uuid} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-700/30">
                       <td className="p-4 font-medium whitespace-nowrap">{new Date(c.at).toLocaleString()}</td>
                       <td className="p-4 font-mono">{c.phone || "Anonymous"}</td>
                       <td className="p-4">{Math.floor(c.durationSec / 60)}:{(c.durationSec % 60).toString().padStart(2, "0")}</td>
@@ -98,7 +98,7 @@ export function CallLogsView() {
                         <button
                           onClick={() => play(c)}
                           disabled={!c.recordingUrl}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-700 hover:bg-zinc-200 disabled:opacity-30 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-700 hover:bg-zinc-200 disabled:opacity-30 dark:bg-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-500"
                         >
                           {isCurrent ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3 fill-current" />}
                         </button>
@@ -135,21 +135,21 @@ export function AnalyticsView() {
       </div>
 
       <div className="grid gap-5 sm:grid-cols-3">
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-600 dark:bg-zinc-800">
           <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Total Handled Calls</p>
           <p className="mt-2 text-3xl font-bold">{totalCalls}</p>
         </div>
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-600 dark:bg-zinc-800">
           <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Avg Interaction Length</p>
           <p className="mt-2 text-3xl font-bold">{Math.floor(avgDuration / 60)}m {avgDuration % 60}s</p>
         </div>
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-600 dark:bg-zinc-800">
           <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Mean Customer Rating</p>
           <p className="mt-2 text-3xl font-bold text-indigo-500">{avgRating} ★</p>
         </div>
       </div>
 
-      <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-zinc-900">
+      <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-600 dark:bg-zinc-800">
         <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-6">AI Agent Quality Distribution</h3>
         <div className="space-y-4">
           <div>
@@ -157,7 +157,7 @@ export function AnalyticsView() {
               <span className="text-emerald-500 font-medium">Optimal Performance (4-5★)</span>
               <span className="font-mono">{high} calls</span>
             </div>
-            <div className="w-full bg-zinc-100 h-3 rounded-full dark:bg-zinc-700 overflow-hidden">
+            <div className="w-full bg-zinc-100 h-3 rounded-full dark:bg-zinc-600 overflow-hidden">
               <div className="bg-emerald-500 h-full transition-all" style={{ width: `${totalCalls ? (high / totalCalls) * 100 : 0}%` }}></div>
             </div>
           </div>
@@ -166,7 +166,7 @@ export function AnalyticsView() {
               <span className="text-amber-500 font-medium">Standard Resolution (3★)</span>
               <span className="font-mono">{mid} calls</span>
             </div>
-            <div className="w-full bg-zinc-100 h-3 rounded-full dark:bg-zinc-700 overflow-hidden">
+            <div className="w-full bg-zinc-100 h-3 rounded-full dark:bg-zinc-600 overflow-hidden">
               <div className="bg-amber-500 h-full transition-all" style={{ width: `${totalCalls ? (mid / totalCalls) * 100 : 0}%` }}></div>
             </div>
           </div>
@@ -175,7 +175,7 @@ export function AnalyticsView() {
               <span className="text-rose-500 font-medium">Escalations / Friction (1-2★)</span>
               <span className="font-mono">{low} calls</span>
             </div>
-            <div className="w-full bg-zinc-100 h-3 rounded-full dark:bg-zinc-700 overflow-hidden">
+            <div className="w-full bg-zinc-100 h-3 rounded-full dark:bg-zinc-600 overflow-hidden">
               <div className="bg-rose-500 h-full transition-all" style={{ width: `${totalCalls ? (low / totalCalls) * 100 : 0}%` }}></div>
             </div>
           </div>
@@ -194,7 +194,7 @@ export function SettingsView() {
         <p className="text-sm text-zinc-500">Verify tenant metadata environment configurations.</p>
       </div>
 
-      <div className="rounded-xl border border-zinc-200 bg-white divide-y divide-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:divide-zinc-700">
+      <div className="rounded-xl border border-zinc-200 bg-white divide-y divide-zinc-200 dark:border-zinc-600 dark:bg-zinc-800 dark:divide-zinc-600">
         <div className="flex items-center gap-4 p-5">
           <User className="h-5 w-5 text-zinc-400" />
           <div>
@@ -211,7 +211,7 @@ export function SettingsView() {
           </div>
         </div>
 
-        <div className="flex items-start gap-4 p-5 bg-zinc-50/50 dark:bg-zinc-800/10">
+        <div className="flex items-start gap-4 p-5 bg-zinc-50/50 dark:bg-zinc-700/10">
           <Shield className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Multi-Tenant Cryptographic Isolation Active</p>

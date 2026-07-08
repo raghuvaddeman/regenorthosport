@@ -15,7 +15,7 @@ import { Headset } from "lucide-react";
 
 export default function LoginPage() {
   return (
-    <div className="grid min-h-screen place-items-center bg-zinc-50 px-4 dark:bg-zinc-900">
+    <div className="grid min-h-screen place-items-center bg-zinc-50 px-4 dark:bg-zinc-800">
       <div className="flex flex-col items-center">
         {/* Brand mark above Clerk's card */}
         <div className="mb-6 flex flex-col items-center gap-3">
@@ -39,7 +39,7 @@ export default function LoginPage() {
               borderRadius: "0.5rem",
             },
             elements: {
-              card: "shadow-sm border border-zinc-200 dark:border-zinc-700",
+              card: "shadow-sm border border-zinc-200 dark:border-zinc-600",
               headerTitle: "hidden", // brand block above replaces it
               headerSubtitle: "hidden",
               formButtonPrimary: "text-sm normal-case",
