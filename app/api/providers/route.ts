@@ -1,15 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth, clerkClient } from '@clerk/nextjs/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { encrypt, maskSecret } from '@/lib/crypto/credentials';
+
+// Tenant (client_id) is derived from the signed-in Clerk session on the
+// server — NEVER from a request body. The JWT's `sessionClaims.metadata`
+// claim can go stale until the user's next sign-in, so fall back to a live
+// Clerk lookup (same pattern as /api/calls) instead of failing outright.
+async function getClientIdFromSession(): Promise<string | null> {
+  const { userId, sessionClaims } = await auth();
+  if (!userId) return null;
+
+  const fromToken = (sessionClaims?.metadata as { clientId?: string } | undefined)?.clientId;
+  if (fromToken) return fromToken;
+
+  const client = await clerkClient();
+  const user = await client.users.getUser(userId);
+  return (user.publicMetadata.clientId as string | undefined) ?? null;
+}
 
 /**
  * GET: Fetch all active/configured providers for the logged-in clinic workspace
  */
 export async function GET() {
   try {
-    const { sessionClaims } = await auth();
-    const clientId = (sessionClaims?.metadata as any)?.clientId;
+    const clientId = await getClientIdFromSession();
 
     // Strict Tenant Isolation Check
     if (!clientId) {
@@ -35,8 +50,8 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { sessionClaims, userId } = await auth();
-    const clientId = (sessionClaims?.metadata as any)?.clientId;
+    const { userId } = await auth();
+    const clientId = await getClientIdFromSession();
     const actorUserId = userId || 'unknown_user';
 
     // Strict Tenant Isolation Check
