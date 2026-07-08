@@ -7,14 +7,30 @@ const IV_LENGTH = 12;
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 
 /**
- * Encrypts a raw text string (like an API key) into a secure string.
+ * Parses ENCRYPTION_KEY as hex and validates it decodes to exactly 32 bytes,
+ * as required by aes-256-gcm. Throws a clear error instead of letting
+ * Node's crypto module fail with an opaque "Invalid key length".
  */
-export function encrypt(plaintext: string): string {
+function getKeyBuffer(): Buffer {
   if (!ENCRYPTION_KEY) {
     throw new Error('ENCRYPTION_KEY environment variable is missing.');
   }
 
   const keyBuffer = Buffer.from(ENCRYPTION_KEY, 'hex');
+  if (keyBuffer.length !== 32) {
+    throw new Error(
+      `ENCRYPTION_KEY must be a 64-character hex string (32 bytes) for aes-256-gcm; got ${keyBuffer.length} bytes.`
+    );
+  }
+
+  return keyBuffer;
+}
+
+/**
+ * Encrypts a raw text string (like an API key) into a secure string.
+ */
+export function encrypt(plaintext: string): string {
+  const keyBuffer = getKeyBuffer();
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ALGORITHM, keyBuffer, iv);
 
@@ -30,16 +46,13 @@ export function encrypt(plaintext: string): string {
  * Decrypts an encrypted string payload back into plain text.
  */
 export function decrypt(payload: string): string {
-  if (!ENCRYPTION_KEY) {
-    throw new Error('ENCRYPTION_KEY environment variable is missing.');
-  }
+  const keyBuffer = getKeyBuffer();
 
   const [ivBase64, authTagBase64, encryptedDataBase64] = payload.split(':');
   if (!ivBase64 || !authTagBase64 || !encryptedDataBase64) {
     throw new Error('Invalid encrypted credentials payload format.');
   }
 
-  const keyBuffer = Buffer.from(ENCRYPTION_KEY, 'hex');
   const iv = Buffer.from(ivBase64, 'base64');
   const authTag = Buffer.from(authTagBase64, 'base64');
   const decipher = crypto.createDecipheriv(ALGORITHM, keyBuffer, iv);
