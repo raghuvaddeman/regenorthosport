@@ -51,17 +51,17 @@ export default function Sidebar() {
     <>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed top-4 left-4 z-50 rounded-md border border-gray-200 bg-white p-2 text-gray-600 shadow-sm transition-colors hover:bg-gray-50 md:hidden dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900"
+        className="fixed top-4 left-4 z-50 rounded-md border border-gray-200 bg-white p-2 text-gray-600 shadow-sm transition-colors hover:bg-gray-50 md:hidden dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800"
         aria-label={isOpen ? "Close menu" : "Open menu"}
         aria-expanded={isOpen}
       >
         {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
 
-      {isOpen && <div onClick={() => setIsOpen(false)} className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-xs md:hidden dark:bg-zinc-950/60" />}
+      {isOpen && <div onClick={() => setIsOpen(false)} className="fixed inset-0 z-40 bg-gray-950/20 backdrop-blur-xs md:hidden dark:bg-zinc-900/60" />}
 
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 transform flex-col border-r border-gray-200 bg-white transition-transform duration-200 ease-in-out md:translate-x-0 md:static ${isOpen ? "translate-x-0" : "-translate-x-full"} dark:border-zinc-800 dark:bg-zinc-950`}>
-        <div className="flex h-16 items-center border-b border-gray-200 px-6 dark:border-zinc-800">
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 transform flex-col border-r border-gray-200 bg-white transition-transform duration-200 ease-in-out md:translate-x-0 md:static ${isOpen ? "translate-x-0" : "-translate-x-full"} dark:border-zinc-700 dark:bg-zinc-900`}>
+        <div className="flex h-16 items-center border-b border-gray-200 px-6 dark:border-zinc-700">
           <Link href="/dashboard" className="flex items-center gap-2.5 font-semibold tracking-tight text-gray-900 dark:text-white">
             <svg viewBox="0 0 76 65" className="h-4 w-auto fill-current"><path d="M37.5274 0L75.0548 65H0L37.5274 0Z"/></svg>
             <span className="text-sm">CallWise Portal</span>
@@ -78,12 +78,12 @@ export default function Sidebar() {
                   const Icon = item.icon;
                   return (
                     <li key={iIdx}>
-                      <Link href={item.href} onClick={() => setIsOpen(false)} aria-current={isActive ? "page" : undefined} className={`flex items-center justify-between rounded-md px-3 py-1.5 text-sm font-medium transition-all ${isActive ? "bg-gray-100 text-gray-900 dark:bg-zinc-900 dark:text-white" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-zinc-400 dark:hover:bg-zinc-900/50 dark:hover:text-zinc-200"}`}>
+                      <Link href={item.href} onClick={() => setIsOpen(false)} aria-current={isActive ? "page" : undefined} className={`flex items-center justify-between rounded-md px-3 py-1.5 text-sm font-medium transition-all ${isActive ? "bg-gray-100 text-gray-900 dark:bg-zinc-800 dark:text-white" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200"}`}>
                         <div className="flex items-center gap-2.5">
                           <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-gray-900 dark:text-white" : "text-gray-400 dark:text-zinc-500"}`} />
                           <span>{item.label}</span>
                         </div>
-                        {item.isBeta && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-gray-600 uppercase dark:bg-zinc-800 dark:text-zinc-400">Beta</span>}
+                        {item.isBeta && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-gray-600 uppercase dark:bg-zinc-700 dark:text-zinc-400">Beta</span>}
                       </Link>
                     </li>
                   );
@@ -93,7 +93,7 @@ export default function Sidebar() {
           ))}
         </nav>
 
-        <div className="border-t border-gray-200 p-4 dark:border-zinc-800">
+        <div className="border-t border-gray-200 p-4 dark:border-zinc-700">
           <div className="flex items-center gap-3 rounded-lg p-2">
             <div className="h-7 w-7 rounded-full bg-gray-900 flex items-center justify-center text-[11px] font-medium text-white dark:bg-zinc-100 dark:text-zinc-900">DM</div>
             <div className="overflow-hidden">

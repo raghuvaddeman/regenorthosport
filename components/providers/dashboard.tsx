@@ -41,7 +41,7 @@ const CATEGORY_TABS: { key: ProviderCategory; label: string; icon: typeof Phone 
 ];
 
 const inputClasses =
-  "w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-600";
+  "w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white dark:placeholder:text-zinc-600";
 
 function humanizeField(field: string) {
   return field
@@ -173,7 +173,7 @@ export default function ProviderManagementDashboard() {
       </header>
 
       {/* Category tabs */}
-      <div className="mb-6 flex flex-wrap gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 p-1.5 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="mb-6 flex flex-wrap gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 p-1.5 dark:border-zinc-700 dark:bg-zinc-800">
         {CATEGORY_TABS.map(({ key, label, icon: Icon }) => {
           const active = activeCategory === key;
           return (
@@ -182,7 +182,7 @@ export default function ProviderManagementDashboard() {
               onClick={() => handleSelectCategory(key)}
               className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                 active
-                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-white"
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-white"
                   : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
               }`}
             >
@@ -195,20 +195,20 @@ export default function ProviderManagementDashboard() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
         {/* Left: filtered provider list */}
-        <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="border-b border-zinc-200 p-3 dark:border-zinc-800">
+        <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+          <div className="border-b border-zinc-200 p-3 dark:border-zinc-700">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search providers…"
-                className="w-full rounded-md border border-zinc-200 bg-zinc-50 py-1.5 pl-8 pr-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none dark:border-zinc-800 dark:bg-zinc-950 dark:text-white"
+                className="w-full rounded-md border border-zinc-200 bg-zinc-50 py-1.5 pl-8 pr-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
               />
             </div>
           </div>
 
-          <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <ul className="divide-y divide-zinc-100 dark:divide-zinc-700">
             {filteredEntries.length === 0 && (
               <li className="px-4 py-6 text-center text-sm text-zinc-400 dark:text-zinc-600">
                 No providers match.
@@ -224,14 +224,14 @@ export default function ProviderManagementDashboard() {
                     onClick={() => handleSelectProvider(key)}
                     className={`flex w-full items-center justify-between px-4 py-3 text-left text-sm transition-colors ${
                       isSelected
-                        ? "bg-zinc-100 dark:bg-zinc-800"
-                        : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                        ? "bg-zinc-100 dark:bg-zinc-700"
+                        : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
                     }`}
                   >
                     <span className="flex items-center gap-2 font-medium text-zinc-800 dark:text-zinc-100">
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          isConnected ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-700"
+                          isConnected ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-600"
                         }`}
                         aria-label={isConnected ? "Connected" : "Not connected"}
                       />
@@ -250,7 +250,7 @@ export default function ProviderManagementDashboard() {
         </div>
 
         {/* Right: dynamic configuration form */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-zinc-800">
           {!selectedMeta ? (
             <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-2 text-center text-zinc-400 dark:text-zinc-600">
               <Plug className="h-6 w-6" />

@@ -50,7 +50,7 @@ interface ConnectedProvider {
 /* ------------------------------ UI building blocks ------------------------------ */
 
 const inputClasses =
-  "w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100";
+  "w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100";
 
 function SectionCard({
   title,
@@ -62,8 +62,8 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
+    <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+      <div className="border-b border-zinc-200 px-5 py-4 dark:border-zinc-700">
         <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
         {description && (
           <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{description}</p>
@@ -120,7 +120,7 @@ function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      className="w-full resize-y rounded-md border border-zinc-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-zinc-900 outline-none transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+      className="w-full resize-y rounded-md border border-zinc-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-zinc-900 outline-none transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
     />
   );
 }
@@ -135,7 +135,7 @@ function SegmentedControl<T extends string>({
   options: { value: T; label: string }[];
 }) {
   return (
-    <div className="inline-flex rounded-md border border-zinc-200 bg-zinc-50 p-0.5 dark:border-zinc-700 dark:bg-zinc-950">
+    <div className="inline-flex rounded-md border border-zinc-200 bg-zinc-50 p-0.5 dark:border-zinc-600 dark:bg-zinc-900">
       {options.map((opt) => (
         <button
           key={opt.value}
@@ -143,7 +143,7 @@ function SegmentedControl<T extends string>({
           onClick={() => onChange(opt.value)}
           className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
             value === opt.value
-              ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-white"
+              ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-white"
               : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
           }`}
         >
@@ -178,9 +178,9 @@ function Slider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1.5 w-full flex-1 cursor-pointer appearance-none rounded-full bg-zinc-200 accent-indigo-600 dark:bg-zinc-700"
+        className="h-1.5 w-full flex-1 cursor-pointer appearance-none rounded-full bg-zinc-200 accent-indigo-600 dark:bg-zinc-600"
       />
-      <span className="w-16 shrink-0 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-center font-mono text-xs tabular-nums text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300">
+      <span className="w-16 shrink-0 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-center font-mono text-xs tabular-nums text-zinc-700 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
         {value}
         {suffix}
       </span>
@@ -204,10 +204,10 @@ function Toggle({
   icon?: React.ElementType;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+    <div className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-700">
       <div className="flex items-start gap-3">
         {Icon && (
-          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-zinc-100 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400">
             <Icon className="h-4 w-4" />
           </span>
         )}
@@ -231,7 +231,7 @@ function Toggle({
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-          checked ? "bg-indigo-600" : "bg-zinc-300 dark:bg-zinc-700"
+          checked ? "bg-indigo-600" : "bg-zinc-300 dark:bg-zinc-600"
         }`}
       >
         <span
@@ -256,7 +256,7 @@ function KpiCard({
   up: boolean;
 }) {
   return (
-    <div className="group rounded-xl border border-zinc-200 bg-white p-5 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800/60">
+    <div className="group rounded-xl border border-zinc-200 bg-white p-5 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700/60">
       <p className="text-xs font-medium uppercase tracking-wider text-zinc-400">{label}</p>
       <p className="mt-2 font-mono text-2xl font-semibold tabular-nums tracking-tight">{value}</p>
       <div
@@ -379,7 +379,7 @@ export default function AgentSettingsPage() {
       <div
         className={`sticky top-14 z-20 -mx-6 flex flex-col gap-4 px-6 py-4 transition-colors sm:flex-row sm:items-center sm:justify-between lg:-mx-10 lg:px-10 ${
           scrolled
-            ? "border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/80"
+            ? "border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-700 dark:bg-zinc-900/80"
             : "border-b border-transparent"
         }`}
       >
@@ -399,7 +399,7 @@ export default function AgentSettingsPage() {
       </div>
 
       {/* Tab strip */}
-      <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800">
+      <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-700">
         {TABS.map(({ id, label, icon: Icon }) => {
           const active = activeTab === id;
           return (

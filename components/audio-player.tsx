@@ -66,7 +66,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     <AudioContext.Provider value={{ currentCall, isPlaying, play, pause, stop }}>
       {children}
       {currentCall && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-4 rounded-full border border-zinc-200 bg-white px-5 py-3 shadow-xl dark:border-zinc-800 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-50">
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-4 rounded-full border border-zinc-200 bg-white px-5 py-3 shadow-xl dark:border-zinc-700 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50">
           <Volume2 className="h-4 w-4 text-indigo-500 animate-pulse" />
           <div className="text-xs">
             <p className="font-medium">Playing Call Session</p>
@@ -74,7 +74,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
           </div>
           <button
             onClick={() => play(currentCall)}
-            className="grid h-8 w-8 place-items-center rounded-full bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 transition-colors"
+            className="grid h-8 w-8 place-items-center rounded-full bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-700 dark:hover:bg-zinc-600 transition-colors"
           >
             {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3 fill-current" />}
           </button>
