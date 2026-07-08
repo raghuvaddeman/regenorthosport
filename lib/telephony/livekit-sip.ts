@@ -1,5 +1,5 @@
 import { SipClient } from "livekit-server-sdk";
-import { SIPTransport } from "@livekit/protocol";
+import { SIPTransport, ListUpdate } from "@livekit/protocol";
 import type {
   CreateSipParticipantOptions,
   SipDispatchRuleCallee,
@@ -81,6 +81,17 @@ export function listOutboundTrunks() {
 
 export function deleteTrunk(sipTrunkId: string) {
   return getSipClient().deleteSipTrunk(sipTrunkId);
+}
+
+/**
+ * Adds additional accepted number formats to an existing inbound trunk
+ * (e.g. a carrier sending national format like "07971442498" alongside the
+ * E.164 number already registered), without disturbing existing config.
+ */
+export function addInboundTrunkNumbers(sipTrunkId: string, numbers: string[]) {
+  return getSipClient().updateSipInboundTrunkFields(sipTrunkId, {
+    numbers: new ListUpdate({ add: numbers }),
+  });
 }
 
 /**

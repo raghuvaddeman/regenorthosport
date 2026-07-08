@@ -7,6 +7,7 @@ import {
   createInboundDispatchRule,
   dispatchOutboundCall,
   deleteTrunk,
+  addInboundTrunkNumbers,
   listInboundTrunks,
   listOutboundTrunks,
   listDispatchRules,
@@ -107,6 +108,19 @@ export async function POST(request: NextRequest) {
 
       const deleted = await deleteTrunk(sipTrunkId);
       return NextResponse.json({ success: true, data: deleted });
+    }
+
+    if (action === 'add_trunk_numbers') {
+      const { sipTrunkId, numbers } = body;
+      if (!sipTrunkId || !Array.isArray(numbers) || numbers.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'sipTrunkId and a non-empty numbers array are required.' },
+          { status: 400 }
+        );
+      }
+
+      const updated = await addInboundTrunkNumbers(sipTrunkId, numbers);
+      return NextResponse.json({ success: true, data: updated });
     }
 
     if (action === 'trigger_outbound') {
