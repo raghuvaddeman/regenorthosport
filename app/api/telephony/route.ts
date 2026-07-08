@@ -6,6 +6,7 @@ import {
   createVobizOutboundTrunk,
   createInboundDispatchRule,
   dispatchOutboundCall,
+  deleteTrunk,
   listInboundTrunks,
   listOutboundTrunks,
   listDispatchRules,
@@ -93,6 +94,19 @@ export async function POST(request: NextRequest) {
         success: true,
         data: { inboundTrunk, dispatchRule, outboundTrunk },
       });
+    }
+
+    if (action === 'delete_trunk') {
+      const { sipTrunkId } = body;
+      if (!sipTrunkId) {
+        return NextResponse.json(
+          { success: false, error: 'sipTrunkId is required.' },
+          { status: 400 }
+        );
+      }
+
+      const deleted = await deleteTrunk(sipTrunkId);
+      return NextResponse.json({ success: true, data: deleted });
     }
 
     if (action === 'trigger_outbound') {
