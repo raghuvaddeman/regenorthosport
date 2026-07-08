@@ -11,7 +11,9 @@
   "dependencies": {
     "@clerk/backend": "^3.10.0",
     "@clerk/nextjs": "^7.5.12",
+    "@livekit/protocol": "^1.49.0",
     "@supabase/supabase-js": "^2.110.0",
+    "livekit-server-sdk": "^2.17.0",
     "lucide-react": "^1.23.0",
     "next": "16.2.10",
     "react": "19.2.4",
