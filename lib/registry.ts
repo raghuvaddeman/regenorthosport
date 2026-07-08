@@ -26,6 +26,12 @@ export const PROVIDER_REGISTRY = {
     secretFields: ["apiKey"],
     fields: ["baseUrl", "region"]
   },
+  gemini: {
+    category: "llm",
+    provider_name: "Gemini",
+    secretFields: ["apiKey"],
+    fields: []
+  },
   elevenlabs: {
     category: "tts",
     provider_name: "ElevenLabs",
