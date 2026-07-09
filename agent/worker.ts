@@ -16,7 +16,7 @@ export default defineAgent({
     const session = new voice.AgentSession({
       vad: ctx.proc.userData.vad as silero.VAD,
       stt: new sarvam.STT({ model: 'saaras:v3', languageCode: 'en-IN' }),
-      llm: new google.LLM({ model: 'gemini-2.0-flash-001', apiKey: process.env.GEMINI_API_KEY }),
+      llm: new google.LLM({ model: 'gemini-2.5-flash', apiKey: process.env.GEMINI_API_KEY }),
       tts: new sarvam.TTS({ model: 'bulbul:v2', targetLanguageCode: 'en-IN' }),
     });
 
