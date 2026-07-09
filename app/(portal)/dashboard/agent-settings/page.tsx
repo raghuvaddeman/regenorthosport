@@ -30,6 +30,8 @@ import {
   Clock,
   PhoneOutgoing,
   Circle,
+  Copy,
+  Check,
 } from "lucide-react";
 
 /* --------------------------------- Tabs --------------------------------- */
@@ -298,6 +300,12 @@ interface OutboundTrunkOption {
   numbers: string[];
 }
 
+interface InboundTrunkOption {
+  sipTrunkId: string;
+  name: string;
+  numbers: string[];
+}
+
 function AgentActionsCard({
   onSave,
   saved,
@@ -319,6 +327,12 @@ function AgentActionsCard({
   const [loadingTrunks, setLoadingTrunks] = useState(false);
 
   const [agentOnline, setAgentOnline] = useState<boolean | null>(null);
+
+  const [inboundPanelOpen, setInboundPanelOpen] = useState(false);
+  const [inboundTrunks, setInboundTrunks] = useState<InboundTrunkOption[]>([]);
+  const [loadingInboundTrunks, setLoadingInboundTrunks] = useState(false);
+  const [inboundFetchError, setInboundFetchError] = useState("");
+  const [copiedNumber, setCopiedNumber] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -355,6 +369,30 @@ function AgentActionsCard({
       .catch(() => {})
       .finally(() => setLoadingTrunks(false));
   }, [callPanelOpen, outboundTrunks.length, loadingTrunks]);
+
+  useEffect(() => {
+    if (!inboundPanelOpen || inboundTrunks.length > 0 || loadingInboundTrunks) return;
+    setLoadingInboundTrunks(true);
+    setInboundFetchError("");
+    fetch("/api/telephony")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success) {
+          setInboundTrunks(json.data.inboundTrunks || []);
+        } else {
+          setInboundFetchError(json.error || "Failed to load inbound number.");
+        }
+      })
+      .catch(() => setInboundFetchError("Failed to load inbound number."))
+      .finally(() => setLoadingInboundTrunks(false));
+  }, [inboundPanelOpen, inboundTrunks.length, loadingInboundTrunks]);
+
+  function handleCopyNumber(number: string) {
+    navigator.clipboard.writeText(number).then(() => {
+      setCopiedNumber(number);
+      setTimeout(() => setCopiedNumber(null), 1500);
+    });
+  }
 
   async function handleGetCall() {
     if (!callTarget) return;
@@ -478,11 +516,62 @@ function AgentActionsCard({
         )}
 
         <button
-          onClick={onOpenInboundTab}
+          onClick={() => setInboundPanelOpen((v) => !v)}
           className="flex w-full items-center justify-center gap-2 rounded-md border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-500 dark:text-zinc-200 dark:hover:bg-zinc-600/60"
         >
-          <PhoneIncoming className="h-4 w-4" /> Set inbound agent
+          <PhoneIncoming className="h-4 w-4" /> Test inbound call
         </button>
+
+        {inboundPanelOpen && (
+          <div className="space-y-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-500">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              Call this number from your own phone to test the inbound agent.
+            </p>
+            {loadingInboundTrunks ? (
+              <p className="text-xs text-zinc-400">Loading number…</p>
+            ) : inboundFetchError ? (
+              <p className="text-xs text-rose-500">{inboundFetchError}</p>
+            ) : inboundTrunks.flatMap((t) => t.numbers).length === 0 ? (
+              <p className="text-xs text-rose-500">
+                No inbound trunk provisioned yet — set up a number first.
+              </p>
+            ) : (
+              inboundTrunks
+                .flatMap((t) => t.numbers)
+                .map((number) => (
+                  <div
+                    key={number}
+                    className="flex items-center justify-between gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-500 dark:bg-zinc-800"
+                  >
+                    <span className="font-mono text-sm text-zinc-900 dark:text-zinc-100">{number}</span>
+                    <button
+                      onClick={() => handleCopyNumber(number)}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                    >
+                      {copiedNumber === number ? (
+                        <>
+                          <Check className="h-3.5 w-3.5" /> Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" /> Copy
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ))
+            )}
+            <button
+              onClick={() => {
+                setInboundPanelOpen(false);
+                onOpenInboundTab();
+              }}
+              className="w-full pt-1 text-center text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+            >
+              Configure inbound settings
+            </button>
+          </div>
+        )}
 
         <Link
           href="/dashboard/numbers"
