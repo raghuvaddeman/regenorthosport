@@ -315,7 +315,17 @@ export default function ProviderManagementDashboard() {
               {/* Remaining config fields */}
               {selectedMeta.fields.map((field) => {
                 const key = typeof field === "string" ? field : field.key;
-                const options = typeof field === "string" ? null : field.options;
+
+                let options: string[] | null = null;
+                if (typeof field !== "string") {
+                  if ("options" in field) {
+                    options = field.options;
+                  } else {
+                    const dependentValue = configValues[field.dependsOn] || Object.keys(field.optionsByValue)[0];
+                    options = field.optionsByValue[dependentValue] ?? [];
+                  }
+                }
+
                 return (
                   <div key={key} className="mb-4">
                     <label className="mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
@@ -324,7 +334,7 @@ export default function ProviderManagementDashboard() {
                     {options ? (
                       <select
                         required
-                        value={configValues[key] || options[0]}
+                        value={options.includes(configValues[key]) ? configValues[key] : options[0]}
                         onChange={(e) => handleFieldChange(key, e.target.value)}
                         className={inputClasses}
                       >

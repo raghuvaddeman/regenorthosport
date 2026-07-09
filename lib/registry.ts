@@ -1,10 +1,13 @@
 export const PROVIDER_CATEGORIES = ["telephony", "llm", "tts", "stt", "tools"] as const;
 export type ProviderCategory = (typeof PROVIDER_CATEGORIES)[number];
 
-// A field is either a plain text input (string) or a dropdown with preset
-// options (used for model selection, so tenants pick from a known-good list
-// instead of typing a model name that may not exist).
-export type FieldDef = string | { key: string; options: string[] };
+// A field is a plain text input (string), a dropdown with fixed options, or
+// a dropdown whose options depend on the currently selected value of another
+// field (e.g. TTS voice options differ per Sarvam model).
+export type FieldDef =
+  | string
+  | { key: string; options: string[] }
+  | { key: string; dependsOn: string; optionsByValue: Record<string, string[]> };
 
 export const PROVIDER_REGISTRY = {
   vobiz: {
@@ -47,7 +50,23 @@ export const PROVIDER_REGISTRY = {
     category: "tts",
     provider_name: "Sarvam",
     secretFields: ["apiKey"],
-    fields: [{ key: "model", options: ["bulbul:v2", "bulbul:v3"] }] as FieldDef[]
+    fields: [
+      { key: "model", options: ["bulbul:v2", "bulbul:v3"] },
+      {
+        key: "voice",
+        dependsOn: "model",
+        optionsByValue: {
+          "bulbul:v2": ["anushka", "manisha", "vidya", "arya", "abhilash", "karun", "hitesh"],
+          "bulbul:v3": [
+            "shubh", "aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran",
+            "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit",
+            "roopa", "kabir", "aayan", "ashutosh", "advait", "amelia", "sophia", "anand",
+            "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit",
+            "kavitha", "rehan", "soham", "rupali"
+          ]
+        }
+      }
+    ] as FieldDef[]
   },
   deepgram: {
     category: "stt",
