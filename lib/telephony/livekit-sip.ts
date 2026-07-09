@@ -46,15 +46,30 @@ function getVobizConfig() {
   return { domain, username, password };
 }
 
+// Vobiz's SIP signaling IPs (per Vobiz docs: https://docs.vobiz.ai/concepts/ip-whitelisting).
+// Used to restrict the inbound trunk instead of SIP digest auth, since Vobiz's outbound
+// INVITEs don't carry auth headers that match LiveKit's expected digest scheme. Vobiz notes
+// these IPs can change, so re-verify with Vobiz support if inbound calls start failing.
+const VOBIZ_SIGNALING_IPS = [
+  "13.203.7.132",
+  "65.2.100.211",
+  "13.126.98.234",
+  "13.235.11.131",
+  "13.233.44.61",
+  "3.111.255.163",
+  "3.111.128.110",
+  "43.204.64.203",
+  "15.207.232.91",
+  "35.154.133.28",
+];
+
 /**
  * Provisions an inbound SIP trunk that accepts calls from Vobiz for the
- * given phone number(s), authenticated with the Vobiz trunk credentials.
+ * given phone number(s), restricted to Vobiz's known signaling IPs.
  */
 export function createVobizInboundTrunk(name: string, numbers: string[]) {
-  const { username, password } = getVobizConfig();
   return getSipClient().createSipInboundTrunk(name, numbers, {
-    authUsername: username,
-    authPassword: password,
+    allowedAddresses: VOBIZ_SIGNALING_IPS,
   });
 }
 
