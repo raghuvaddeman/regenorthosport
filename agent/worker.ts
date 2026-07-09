@@ -32,6 +32,41 @@ async function fetchAgentSettings(): Promise<{ welcomeMessage: string; systemPro
   }
 }
 
+const MODEL_DEFAULTS = {
+  geminiModel: 'gemini-2.5-flash',
+  sttModel: 'saaras:v3',
+  ttsModel: 'bulbul:v2',
+};
+
+/** Fetches the tenant's chosen LLM/STT/TTS models from the Providers page, falling back to defaults. */
+async function fetchProviderModels(): Promise<typeof MODEL_DEFAULTS> {
+  const appUrl = process.env.APP_URL;
+  const secret = process.env.INTERNAL_SECRET_KEY;
+  const clientId = process.env.AGENT_CLIENT_ID;
+  if (!appUrl || !secret || !clientId) return MODEL_DEFAULTS;
+
+  try {
+    const res = await fetch(`${appUrl}/api/providers?client_id=${encodeURIComponent(clientId)}`, {
+      headers: { 'x-internal-secret': secret },
+    });
+    if (!res.ok) return MODEL_DEFAULTS;
+    const json = await res.json();
+    if (!json.success || !Array.isArray(json.data)) return MODEL_DEFAULTS;
+
+    const modelFor = (providerKey: string) =>
+      json.data.find((p: any) => p.provider_key === providerKey)?.config_json?.model as string | undefined;
+
+    return {
+      geminiModel: modelFor('gemini') ?? MODEL_DEFAULTS.geminiModel,
+      sttModel: modelFor('sarvam_stt') ?? MODEL_DEFAULTS.sttModel,
+      ttsModel: modelFor('sarvam_tts') ?? MODEL_DEFAULTS.ttsModel,
+    };
+  } catch (err: any) {
+    console.warn('Provider models fetch failed:', err.message);
+    return MODEL_DEFAULTS;
+  }
+}
+
 export default defineAgent({
   prewarm: async (proc: JobProcess) => {
     proc.userData.vad = await silero.VAD.load();
@@ -40,13 +75,13 @@ export default defineAgent({
   entry: async (ctx: JobContext) => {
     await ctx.connect();
 
-    const settings = await fetchAgentSettings();
+    const [settings, models] = await Promise.all([fetchAgentSettings(), fetchProviderModels()]);
 
     const session = new voice.AgentSession({
       vad: ctx.proc.userData.vad as silero.VAD,
-      stt: new sarvam.STT({ model: 'saaras:v3', languageCode: 'en-IN' }),
-      llm: new google.LLM({ model: 'gemini-2.5-flash', apiKey: process.env.GEMINI_API_KEY }),
-      tts: new sarvam.TTS({ model: 'bulbul:v2', targetLanguageCode: 'en-IN' }),
+      stt: new sarvam.STT({ model: models.sttModel as any, languageCode: 'en-IN' }),
+      llm: new google.LLM({ model: models.geminiModel, apiKey: process.env.GEMINI_API_KEY }),
+      tts: new sarvam.TTS({ model: models.ttsModel as any, targetLanguageCode: 'en-IN' }),
     });
 
     const agent = new voice.Agent({

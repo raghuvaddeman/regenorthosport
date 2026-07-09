@@ -1,6 +1,11 @@
 export const PROVIDER_CATEGORIES = ["telephony", "llm", "tts", "stt", "tools"] as const;
 export type ProviderCategory = (typeof PROVIDER_CATEGORIES)[number];
 
+// A field is either a plain text input (string) or a dropdown with preset
+// options (used for model selection, so tenants pick from a known-good list
+// instead of typing a model name that may not exist).
+export type FieldDef = string | { key: string; options: string[] };
+
 export const PROVIDER_REGISTRY = {
   vobiz: {
     category: "telephony",
@@ -30,7 +35,7 @@ export const PROVIDER_REGISTRY = {
     category: "llm",
     provider_name: "Gemini",
     secretFields: ["apiKey"],
-    fields: []
+    fields: [{ key: "model", options: ["gemini-2.5-flash", "gemini-2.5-pro"] }] as FieldDef[]
   },
   elevenlabs: {
     category: "tts",
@@ -42,7 +47,7 @@ export const PROVIDER_REGISTRY = {
     category: "tts",
     provider_name: "Sarvam",
     secretFields: ["apiKey"],
-    fields: []
+    fields: [{ key: "model", options: ["bulbul:v2", "bulbul:v3"] }] as FieldDef[]
   },
   deepgram: {
     category: "stt",
@@ -54,7 +59,7 @@ export const PROVIDER_REGISTRY = {
     category: "stt",
     provider_name: "Sarvam",
     secretFields: ["apiKey"],
-    fields: []
+    fields: [{ key: "model", options: ["saaras:v3", "saaras:v2.5", "saarika:v2.5"] }] as FieldDef[]
   },
   zoho_crm: {
     category: "tools",

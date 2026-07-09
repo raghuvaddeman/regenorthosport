@@ -313,21 +313,40 @@ export default function ProviderManagementDashboard() {
               })}
 
               {/* Remaining config fields */}
-              {selectedMeta.fields.map((field) => (
-                <div key={field} className="mb-4">
-                  <label className="mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                    {humanizeField(field)}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={configValues[field] || ""}
-                    onChange={(e) => handleFieldChange(field, e.target.value)}
-                    placeholder={`Enter ${humanizeField(field).toLowerCase()}`}
-                    className={inputClasses}
-                  />
-                </div>
-              ))}
+              {selectedMeta.fields.map((field) => {
+                const key = typeof field === "string" ? field : field.key;
+                const options = typeof field === "string" ? null : field.options;
+                return (
+                  <div key={key} className="mb-4">
+                    <label className="mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      {humanizeField(key)}
+                    </label>
+                    {options ? (
+                      <select
+                        required
+                        value={configValues[key] || options[0]}
+                        onChange={(e) => handleFieldChange(key, e.target.value)}
+                        className={inputClasses}
+                      >
+                        {options.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        required
+                        value={configValues[key] || ""}
+                        onChange={(e) => handleFieldChange(key, e.target.value)}
+                        placeholder={`Enter ${humanizeField(key).toLowerCase()}`}
+                        className={inputClasses}
+                      />
+                    )}
+                  </div>
+                );
+              })}
 
               <button
                 type="submit"

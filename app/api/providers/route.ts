@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { encrypt, maskSecret } from '@/lib/crypto/credentials';
+import { isAuthorizedInternalRequest } from '@/lib/telephony/internal-auth';
 
 // Tenant (client_id) is derived from the signed-in Clerk session on the
 // server — NEVER from a request body. The JWT's `sessionClaims.metadata`
@@ -20,15 +21,27 @@ async function getClientIdFromSession(): Promise<string | null> {
 }
 
 /**
- * GET: Fetch all active/configured providers for the logged-in clinic workspace
+ * GET: Fetch all active/configured providers for a tenant. Clerk-authed for
+ * the dashboard, or internal-secret + ?client_id=... for the standalone
+ * agent worker (same dual-auth pattern as /api/agent-settings).
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const clientId = await getClientIdFromSession();
+    let clientId: string | null;
 
-    // Strict Tenant Isolation Check
-    if (!clientId) {
-      return NextResponse.json({ success: false, error: 'Unauthorized: Missing valid tenant identifier.' }, { status: 401 });
+    if (isAuthorizedInternalRequest(request)) {
+      clientId = request.nextUrl.searchParams.get('client_id');
+      if (!clientId) {
+        return NextResponse.json(
+          { success: false, error: 'Missing client_id query param.' },
+          { status: 400 }
+        );
+      }
+    } else {
+      clientId = await getClientIdFromSession();
+      if (!clientId) {
+        return NextResponse.json({ success: false, error: 'Unauthorized: Missing valid tenant identifier.' }, { status: 401 });
+      }
     }
 
     const supabase = getSupabaseAdmin();
