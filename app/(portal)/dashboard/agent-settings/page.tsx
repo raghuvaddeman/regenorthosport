@@ -656,12 +656,32 @@ const DEFAULT_SYSTEM_PROMPT = `You are Priya, the AI front-desk receptionist for
 export default function AgentSettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>("agent");
 
-  // Agent tab
+  // Agent tab — persisted via /api/agent-settings, used live by the call worker.
   const [welcomeMessage, setWelcomeMessage] = useState(
     "Hello. This is Priya from RegenOrthoSport"
   );
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [agentName, setAgentName] = useState("Priya");
+  const [loadingAgentSettings, setLoadingAgentSettings] = useState(true);
+
+  useEffect(() => {
+    async function fetchAgentSettings() {
+      try {
+        const res = await fetch("/api/agent-settings");
+        const json = await res.json();
+        if (json.success) {
+          setAgentName(json.data.agentName);
+          setWelcomeMessage(json.data.welcomeMessage);
+          setSystemPrompt(json.data.systemPrompt);
+        }
+      } catch {
+        // leave the built-in defaults in place
+      } finally {
+        setLoadingAgentSettings(false);
+      }
+    }
+    fetchAgentSettings();
+  }, []);
 
   // LLM tab
   const [provider, setProvider] = useState("");
@@ -728,11 +748,28 @@ export default function AgentSettingsPage() {
   const [escalateAfterFailures, setEscalateAfterFailures] = useState(true);
 
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
-  function handleSave() {
-    setSaved(true);
-    setLastSavedAt(new Date());
-    setTimeout(() => setSaved(false), 2000);
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch("/api/agent-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentName, welcomeMessage, systemPrompt }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to save.");
+      setSaved(true);
+      setLastSavedAt(new Date());
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   // Tracks scroll position so the sticky action bar can pick up a hairline
@@ -763,13 +800,17 @@ export default function AgentSettingsPage() {
             Configure the orchestration behavior of your AI voice agent.
           </p>
         </div>
-        <button
-          onClick={handleSave}
-          className="inline-flex items-center gap-2 self-start rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 sm:self-auto"
-        >
-          <Save className="h-4 w-4" />
-          {saved ? "Saved" : "Save changes"}
-        </button>
+        <div className="flex flex-col items-end gap-1.5">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-2 self-start rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-60 sm:self-auto"
+          >
+            <Save className="h-4 w-4" />
+            {saving ? "Saving..." : saved ? "Saved" : "Save changes"}
+          </button>
+          {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+        </div>
       </div>
 
       {/* Tab strip */}

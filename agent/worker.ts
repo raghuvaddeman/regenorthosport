@@ -5,6 +5,33 @@ import * as google from '@livekit/agents-plugin-google';
 import * as sarvam from '@livekit/agents-plugin-sarvam';
 import * as silero from '@livekit/agents-plugin-silero';
 
+const FALLBACK_INSTRUCTIONS =
+  'You are a friendly, helpful voice assistant answering phone calls for a healthcare practice. ' +
+  'Keep responses brief and conversational, ask clarifying questions when needed, and be polite at all times.';
+
+/** Fetches the persisted agent persona (system prompt + welcome message) from the dashboard. */
+async function fetchAgentSettings(): Promise<{ welcomeMessage: string; systemPrompt: string } | null> {
+  const appUrl = process.env.APP_URL;
+  const secret = process.env.INTERNAL_SECRET_KEY;
+  const clientId = process.env.AGENT_CLIENT_ID;
+  if (!appUrl || !secret || !clientId) {
+    console.warn('Agent settings fetch disabled: APP_URL, INTERNAL_SECRET_KEY, or AGENT_CLIENT_ID is not set.');
+    return null;
+  }
+
+  try {
+    const res = await fetch(`${appUrl}/api/agent-settings?client_id=${encodeURIComponent(clientId)}`, {
+      headers: { 'x-internal-secret': secret },
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.success ? json.data : null;
+  } catch (err: any) {
+    console.warn('Agent settings fetch failed:', err.message);
+    return null;
+  }
+}
+
 export default defineAgent({
   prewarm: async (proc: JobProcess) => {
     proc.userData.vad = await silero.VAD.load();
@@ -12,6 +39,8 @@ export default defineAgent({
 
   entry: async (ctx: JobContext) => {
     await ctx.connect();
+
+    const settings = await fetchAgentSettings();
 
     const session = new voice.AgentSession({
       vad: ctx.proc.userData.vad as silero.VAD,
@@ -21,15 +50,15 @@ export default defineAgent({
     });
 
     const agent = new voice.Agent({
-      instructions:
-        'You are a friendly, helpful voice assistant answering phone calls for a healthcare practice. ' +
-        'Keep responses brief and conversational, ask clarifying questions when needed, and be polite at all times.',
+      instructions: settings?.systemPrompt ?? FALLBACK_INSTRUCTIONS,
     });
 
     await session.start({ agent, room: ctx.room });
 
     await session.generateReply({
-      instructions: 'Greet the caller warmly and ask how you can help them today.',
+      instructions: settings?.welcomeMessage
+        ? `Greet the caller with exactly: "${settings.welcomeMessage}"`
+        : 'Greet the caller warmly and ask how you can help them today.',
     });
   },
 });
