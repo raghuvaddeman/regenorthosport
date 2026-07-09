@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
 import { defineAgent, cli, voice, type JobContext, type JobProcess, ServerOptions } from '@livekit/agents';
 import * as google from '@livekit/agents-plugin-google';
