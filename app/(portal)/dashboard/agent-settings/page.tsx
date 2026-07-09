@@ -22,6 +22,14 @@ import {
   MessageSquareText,
   CalendarCheck,
   ShieldCheck,
+  ExternalLink,
+  ArrowUpRight,
+  Trash2,
+  MessageCircle,
+  Globe,
+  Clock,
+  PhoneOutgoing,
+  Circle,
 } from "lucide-react";
 
 /* --------------------------------- Tabs --------------------------------- */
@@ -271,6 +279,280 @@ function KpiCard({
   );
 }
 
+function timeAgo(date: Date | null): string {
+  if (!date) return "Not saved yet";
+  const sec = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (sec < 10) return "Just now";
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min${min === 1 ? "" : "s"} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+  const day = Math.floor(hr / 24);
+  return `${day} day${day === 1 ? "" : "s"} ago`;
+}
+
+interface OutboundTrunkOption {
+  sipTrunkId: string;
+  name: string;
+  numbers: string[];
+}
+
+function AgentActionsCard({
+  onSave,
+  saved,
+  lastSavedAt,
+  onOpenInboundTab,
+}: {
+  onSave: () => void;
+  saved: boolean;
+  lastSavedAt: Date | null;
+  onOpenInboundTab: () => void;
+}) {
+  const [callPanelOpen, setCallPanelOpen] = useState(false);
+  const [callTarget, setCallTarget] = useState("");
+  const [callStatus, setCallStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [callError, setCallError] = useState("");
+
+  const [outboundTrunks, setOutboundTrunks] = useState<OutboundTrunkOption[]>([]);
+  const [selectedTrunkId, setSelectedTrunkId] = useState("");
+  const [loadingTrunks, setLoadingTrunks] = useState(false);
+
+  const [agentOnline, setAgentOnline] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    function poll() {
+      fetch("/api/agent-heartbeat")
+        .then((res) => res.json())
+        .then((json) => {
+          if (!cancelled && json.success) setAgentOnline(json.data.online);
+        })
+        .catch(() => {
+          if (!cancelled) setAgentOnline(null);
+        });
+    }
+    poll();
+    const id = setInterval(poll, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!callPanelOpen || outboundTrunks.length > 0 || loadingTrunks) return;
+    setLoadingTrunks(true);
+    fetch("/api/telephony")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success) {
+          const trunks: OutboundTrunkOption[] = json.data.outboundTrunks || [];
+          setOutboundTrunks(trunks);
+          setSelectedTrunkId((prev) => prev || trunks[0]?.sipTrunkId || "");
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTrunks(false));
+  }, [callPanelOpen, outboundTrunks.length, loadingTrunks]);
+
+  async function handleGetCall() {
+    if (!callTarget) return;
+    setCallStatus("loading");
+    setCallError("");
+    try {
+      const res = await fetch("/api/telephony", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "trigger_outbound",
+          toNumber: callTarget,
+          roomName: `test-${Date.now()}`,
+          sipTrunkId: selectedTrunkId || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to place call.");
+      setCallStatus("success");
+    } catch (err: any) {
+      setCallStatus("error");
+      setCallError(err.message || "Failed to place call.");
+    }
+  }
+
+  return (
+    <div className="sticky top-20 w-full shrink-0 space-y-4 lg:w-80">
+      {/* Quick actions */}
+      <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-600 dark:bg-zinc-700">
+        <div className="mb-1 flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2 dark:border-zinc-500">
+          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Agent Status</span>
+          <span
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+              agentOnline === null
+                ? "text-zinc-400"
+                : agentOnline
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-rose-600 dark:text-rose-400"
+            }`}
+          >
+            <Circle
+              className={`h-2 w-2 ${
+                agentOnline === null
+                  ? "fill-zinc-400 text-zinc-400"
+                  : agentOnline
+                    ? "fill-emerald-500 text-emerald-500"
+                    : "fill-rose-500 text-rose-500"
+              }`}
+            />
+            {agentOnline === null ? "Checking…" : agentOnline ? "Online" : "Offline"}
+          </span>
+        </div>
+
+        <button
+          onClick={() => setCallPanelOpen((v) => !v)}
+          className="flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+        >
+          <PhoneOutgoing className="h-4 w-4" /> Get call from agent
+        </button>
+
+        {callPanelOpen && (
+          <div className="space-y-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-500">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                Call from
+              </label>
+              {loadingTrunks ? (
+                <p className="text-xs text-zinc-400">Loading trunks…</p>
+              ) : outboundTrunks.length === 0 ? (
+                <p className="text-xs text-rose-500">
+                  No outbound trunk provisioned yet — set up a number first.
+                </p>
+              ) : (
+                <SelectInput
+                  value={selectedTrunkId}
+                  onChange={(e) => setSelectedTrunkId(e.target.value)}
+                >
+                  {outboundTrunks.map((t) => (
+                    <option key={t.sipTrunkId} value={t.sipTrunkId}>
+                      {t.numbers[0] || t.name}
+                    </option>
+                  ))}
+                </SelectInput>
+              )}
+            </div>
+            <TextInput
+              placeholder="+1 555 019 2044"
+              value={callTarget}
+              onChange={(e) => {
+                setCallTarget(e.target.value);
+                setCallStatus("idle");
+              }}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleGetCall}
+                disabled={callStatus === "loading" || !callTarget || !selectedTrunkId}
+                className="flex-1 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
+              >
+                {callStatus === "loading" ? "Dialing…" : "Call me now"}
+              </button>
+              <button
+                onClick={() => {
+                  setCallPanelOpen(false);
+                  setCallStatus("idle");
+                }}
+                className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-500 dark:border-zinc-500 dark:text-zinc-400"
+              >
+                Cancel
+              </button>
+            </div>
+            {callStatus === "success" && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                Call dispatched — answer your phone.
+              </p>
+            )}
+            {callStatus === "error" && (
+              <p className="text-xs text-rose-600 dark:text-rose-400">{callError}</p>
+            )}
+          </div>
+        )}
+
+        <button
+          onClick={onOpenInboundTab}
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-500 dark:text-zinc-200 dark:hover:bg-zinc-600/60"
+        >
+          <PhoneIncoming className="h-4 w-4" /> Set inbound agent
+        </button>
+
+        <Link
+          href="/dashboard/numbers"
+          className="flex items-center justify-center gap-1.5 pt-1 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+        >
+          Purchase phone numbers <ExternalLink className="h-3 w-3" />
+        </Link>
+      </div>
+
+      {/* Manage */}
+      <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-600 dark:bg-zinc-700">
+        <Link
+          href="/dashboard/calls"
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-500 dark:text-zinc-200 dark:hover:bg-zinc-600/60"
+        >
+          See all call logs <ArrowUpRight className="h-3.5 w-3.5" />
+        </Link>
+
+        <div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onSave}
+              className="flex flex-1 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+            >
+              <Save className="h-4 w-4" /> {saved ? "Saved" : "Save agent"}
+            </button>
+            <button
+              disabled
+              title="Not available yet"
+              className="grid h-[42px] w-[42px] shrink-0 cursor-not-allowed place-items-center rounded-md border border-zinc-200 text-zinc-300 dark:border-zinc-600 dark:text-zinc-600"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-zinc-400">
+            <Clock className="h-3 w-3" /> {timeAgo(lastSavedAt)}
+          </p>
+        </div>
+
+        <div className="border-t border-zinc-200 pt-4 dark:border-zinc-600">
+          <button
+            disabled
+            title="Coming soon"
+            className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-md border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-300 dark:border-zinc-600 dark:text-zinc-600"
+          >
+            <MessageCircle className="h-4 w-4" /> Chat with agent
+          </button>
+          <p className="mt-1.5 text-center text-xs text-zinc-400">Coming soon</p>
+        </div>
+
+        <div className="border-t border-dashed border-zinc-200 pt-4 dark:border-zinc-600">
+          <button
+            disabled
+            title="Coming soon"
+            className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-md border border-dashed border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-300 dark:border-zinc-600 dark:text-zinc-600"
+          >
+            <Globe className="h-4 w-4" /> Test via browser
+            <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:bg-zinc-600">
+              Beta
+            </span>
+          </button>
+          <p className="mt-1.5 flex items-center justify-center gap-1 text-center text-xs text-zinc-400">
+            <PhoneCall className="h-3 w-3" /> For best experience, use &quot;Get call from agent&quot;
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* --------------------------------- Page --------------------------------- */
 
 const DEFAULT_SYSTEM_PROMPT = `You are Priya, the AI front-desk receptionist for RegenOrthoSport, an orthopedic and sports medicine clinic.
@@ -357,8 +639,10 @@ export default function AgentSettingsPage() {
   const [escalateAfterFailures, setEscalateAfterFailures] = useState(true);
 
   const [saved, setSaved] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   function handleSave() {
     setSaved(true);
+    setLastSavedAt(new Date());
     setTimeout(() => setSaved(false), 2000);
   }
 
@@ -375,9 +659,10 @@ export default function AgentSettingsPage() {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+    <div className="min-w-0 flex-1 space-y-6">
       <div
-        className={`sticky top-14 z-20 -mx-6 flex flex-col gap-4 px-6 py-4 transition-colors sm:flex-row sm:items-center sm:justify-between lg:-mx-10 lg:px-10 ${
+        className={`sticky top-14 z-20 flex flex-col gap-4 py-4 transition-colors sm:flex-row sm:items-center sm:justify-between ${
           scrolled
             ? "border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-600 dark:bg-zinc-800/80"
             : "border-b border-transparent"
@@ -707,6 +992,14 @@ export default function AgentSettingsPage() {
           </SectionCard>
         </div>
       )}
+    </div>
+
+    <AgentActionsCard
+      onSave={handleSave}
+      saved={saved}
+      lastSavedAt={lastSavedAt}
+      onOpenInboundTab={() => setActiveTab("inbound")}
+    />
     </div>
   );
 }

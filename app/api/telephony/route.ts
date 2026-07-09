@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import {
@@ -12,23 +11,7 @@ import {
   listOutboundTrunks,
   listDispatchRules,
 } from '@/lib/telephony/livekit-sip';
-
-/**
- * Allows server-to-server / terminal (curl) callers to authenticate with a
- * shared secret instead of a Clerk session, via the `x-internal-secret`
- * header. Only enabled when INTERNAL_SECRET_KEY is set — never falls open.
- */
-function isAuthorizedInternalRequest(request: NextRequest): boolean {
-  const secret = process.env.INTERNAL_SECRET_KEY;
-  const provided = request.headers.get('x-internal-secret');
-  if (!secret || !provided) return false;
-
-  const secretBuf = Buffer.from(secret);
-  const providedBuf = Buffer.from(provided);
-  if (secretBuf.length !== providedBuf.length) return false;
-
-  return crypto.timingSafeEqual(secretBuf, providedBuf);
-}
+import { isAuthorizedInternalRequest } from '@/lib/telephony/internal-auth';
 
 /**
  * GET: Report the current LiveKit <-> Vobiz SIP infrastructure status
@@ -124,7 +107,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'trigger_outbound') {
-      const { toNumber, roomName } = body;
+      const { toNumber, roomName, sipTrunkId } = body;
       if (!toNumber || !roomName) {
         return NextResponse.json(
           { success: false, error: 'toNumber and roomName are required.' },
@@ -133,10 +116,19 @@ export async function POST(request: NextRequest) {
       }
 
       const outboundTrunks = await listOutboundTrunks();
-      const trunk = outboundTrunks[0];
-      if (!trunk) {
+      if (outboundTrunks.length === 0) {
         return NextResponse.json(
           { success: false, error: 'No outbound trunk provisioned yet. Run "provision_trunks" first.' },
+          { status: 400 }
+        );
+      }
+
+      const trunk = sipTrunkId
+        ? outboundTrunks.find((t) => t.sipTrunkId === sipTrunkId)
+        : outboundTrunks[0];
+      if (!trunk) {
+        return NextResponse.json(
+          { success: false, error: `Outbound trunk "${sipTrunkId}" was not found.` },
           { status: 400 }
         );
       }
