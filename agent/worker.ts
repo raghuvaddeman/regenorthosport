@@ -14,6 +14,7 @@ import {
 import * as google from '@livekit/agents-plugin-google';
 import * as sarvam from '@livekit/agents-plugin-sarvam';
 import * as silero from '@livekit/agents-plugin-silero';
+import type { CallUsage } from '../lib/pricing/call-cost';
 
 const FALLBACK_INSTRUCTIONS =
   'You are a friendly, helpful voice assistant answering phone calls for a healthcare practice. ' +
@@ -111,6 +112,39 @@ const ENDPOINTING_MAX_DELAY_MS = 1200;
 // the current pinned default (see MODEL_DEFAULTS.geminiModel) — leave unset in production.
 const LLM_MODEL_OVERRIDE = process.env.LLM_MODEL;
 
+/**
+ * Reports a completed call's usage to the dashboard for cost computation/storage.
+ * Fire-and-forget: never blocks or throws into the caller, matches the pattern used
+ * by fetchAgentSettings/startHeartbeat. A failed report means that call's cost row
+ * is permanently missing (no retry) — logged via console.warn only.
+ */
+async function reportCallCost(payload: {
+  callUuid: string;
+  customerPhone: string;
+  durationSec: number;
+  ttsAudioDurationMs: number;
+  usage: CallUsage;
+}) {
+  const appUrl = process.env.APP_URL;
+  const secret = process.env.INTERNAL_SECRET_KEY;
+  const clientId = process.env.AGENT_CLIENT_ID;
+  if (!appUrl || !secret || !clientId) {
+    console.warn('Call cost report disabled: APP_URL, INTERNAL_SECRET_KEY, or AGENT_CLIENT_ID is not set.');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${appUrl}/api/calls?client_id=${encodeURIComponent(clientId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': secret },
+      body: JSON.stringify({ clientId, ...payload }),
+    });
+    if (!res.ok) console.warn('Call cost report failed:', res.status, await res.text().catch(() => ''));
+  } catch (err: any) {
+    console.warn('Call cost report failed:', err.message);
+  }
+}
+
 type TurnLatency = { eouDelayMs?: number; llmTtftMs?: number; ttsTtfbMs?: number };
 
 /**
@@ -123,9 +157,14 @@ function attachLatencyLogging(
   session: voice.AgentSession,
   activeConfig: {
     llmModel: string;
+    sttModel: string;
+    ttsModel: string;
     thinkingBudget: number;
     endpointingMinDelayMs: number;
     endpointingMaxDelayMs: number;
+    callUuid: string;
+    callStartedAt: number;
+    callInfo: { customerPhone: string };
   }
 ) {
   console.log(
@@ -137,6 +176,12 @@ function attachLatencyLogging(
   const turns = new Map<string, TurnLatency>();
   const completedTotalsMs: number[] = [];
   const completedTtftMs: number[] = [];
+
+  let llmPromptTokens = 0;
+  let llmCompletionTokens = 0;
+  let sttAudioDurationMs = 0;
+  let ttsCharactersCount = 0;
+  let ttsAudioDurationMs = 0;
 
   const maybeLogTotal = (speechId: string) => {
     const t = turns.get(speechId);
@@ -178,6 +223,13 @@ function attachLatencyLogging(
           turns.set(m.speechId, t);
           maybeLogTotal(m.speechId);
         }
+        llmPromptTokens += m.promptTokens;
+        llmCompletionTokens += m.completionTokens;
+        break;
+      }
+      case 'stt_metrics': {
+        sttAudioDurationMs += m.audioDurationMs;
+        console.log(`[LATENCY] stage=stt audio_duration=${Math.round(m.audioDurationMs)}ms`);
         break;
       }
       case 'tts_metrics': {
@@ -189,6 +241,8 @@ function attachLatencyLogging(
           turns.set(m.speechId, t);
           maybeLogTotal(m.speechId);
         }
+        ttsCharactersCount += m.charactersCount;
+        ttsAudioDurationMs += m.audioDurationMs;
         break;
       }
       default:
@@ -197,14 +251,33 @@ function attachLatencyLogging(
   });
 
   session.on(AgentSessionEventTypes.Close, () => {
-    if (completedTotalsMs.length === 0) return;
-    const turnCount = completedTotalsMs.length;
-    const avg = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
-    console.log(
-      `[LATENCY] SUMMARY turns=${turnCount} avg_total=${Math.round(avg(completedTotalsMs))}ms ` +
-        `min_total=${Math.round(Math.min(...completedTotalsMs))}ms max_total=${Math.round(Math.max(...completedTotalsMs))}ms ` +
-        `avg_llm_ttft=${Math.round(avg(completedTtftMs))}ms`
-    );
+    if (completedTotalsMs.length > 0) {
+      const turnCount = completedTotalsMs.length;
+      const avg = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
+      console.log(
+        `[LATENCY] SUMMARY turns=${turnCount} avg_total=${Math.round(avg(completedTotalsMs))}ms ` +
+          `min_total=${Math.round(Math.min(...completedTotalsMs))}ms max_total=${Math.round(Math.max(...completedTotalsMs))}ms ` +
+          `avg_llm_ttft=${Math.round(avg(completedTtftMs))}ms`
+      );
+    }
+
+    const durationSec = Math.round((Date.now() - activeConfig.callStartedAt) / 1000);
+    void reportCallCost({
+      callUuid: activeConfig.callUuid,
+      customerPhone: activeConfig.callInfo.customerPhone,
+      durationSec,
+      ttsAudioDurationMs,
+      usage: {
+        geminiModel: activeConfig.llmModel,
+        llmPromptTokens,
+        llmCompletionTokens,
+        sttModel: activeConfig.sttModel,
+        sttAudioDurationMs,
+        ttsModel: activeConfig.ttsModel,
+        ttsCharactersCount,
+        callDurationSec: durationSec,
+      },
+    });
   });
 }
 
@@ -215,6 +288,10 @@ export default defineAgent({
 
   entry: async (ctx: JobContext) => {
     await ctx.connect();
+
+    const callStartedAt = Date.now();
+    const callUuid = ctx.job.id || crypto.randomUUID();
+    const callInfo = { customerPhone: '' };
 
     const [settings, models] = await Promise.all([fetchAgentSettings(), fetchProviderModels()]);
     const geminiModel = LLM_MODEL_OVERRIDE ?? models.geminiModel;
@@ -235,9 +312,14 @@ export default defineAgent({
 
     attachLatencyLogging(session, {
       llmModel: geminiModel,
+      sttModel: models.sttModel,
+      ttsModel: models.ttsModel,
       thinkingBudget: GEMINI_THINKING_BUDGET,
       endpointingMinDelayMs: ENDPOINTING_MIN_DELAY_MS,
       endpointingMaxDelayMs: ENDPOINTING_MAX_DELAY_MS,
+      callUuid,
+      callStartedAt,
+      callInfo,
     });
 
     const agent = new voice.Agent({
@@ -245,6 +327,12 @@ export default defineAgent({
     });
 
     await session.start({ agent, room: ctx.room });
+
+    // Captured once here (participant is definitely connected by now) rather than
+    // re-read at session Close, where the disconnecting participant may already be
+    // gone from ctx.room.remoteParticipants.
+    const participant = [...ctx.room.remoteParticipants.values()][0];
+    callInfo.customerPhone = participant?.identity?.replace(/^sip_/, '') ?? '';
 
     await session.generateReply({
       instructions: settings?.welcomeMessage

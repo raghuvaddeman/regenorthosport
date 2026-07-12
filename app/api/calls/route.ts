@@ -18,9 +18,11 @@
 //   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_xxx
 //   CLERK_SECRET_KEY=sk_xxx
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { isAuthorizedInternalRequest } from "@/lib/telephony/internal-auth";
+import { computeCallCost, type CallUsage } from "@/lib/pricing/call-cost";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +62,7 @@ type DbCallRow = {
   call_at?: string | null;
   call_date_time?: string | null;
   created_at?: string | null;
+  total_cost_inr?: number | null;
 };
 
 function normalizeRow(row: DbCallRow) {
@@ -74,6 +77,7 @@ function normalizeRow(row: DbCallRow) {
     transcript: row.transcript ?? "",
     summary: row.summary ?? row.ai_summary ?? "",
     rating: Number(row.rating ?? row.ai_rating ?? 0),
+    costInr: Number(row.total_cost_inr ?? 0),
     at:
       row.call_at ??
       row.call_date_time ??
@@ -136,4 +140,82 @@ export async function GET() {
 
   const calls = rows.map(normalizeRow);
   return NextResponse.json({ calls });
+}
+
+/* --------------------------- worker call-cost report --------------------------- */
+
+/**
+ * POST: Creates a `calls` row with usage-derived cost, called once by the
+ * standalone agent worker at the end of each call. Internal-secret authed only
+ * (?client_id=... query param, no Clerk session) — the dashboard never writes
+ * calls, only reads them. Cost is recomputed here from raw usage, never trusted
+ * from the worker, so pricing-constant changes take effect without redeploying it.
+ */
+export async function POST(request: NextRequest) {
+  if (!isAuthorizedInternalRequest(request)) {
+    return NextResponse.json({ success: false, error: "Unauthorized." }, { status: 401 });
+  }
+
+  const clientId = request.nextUrl.searchParams.get("client_id");
+  if (!clientId) {
+    return NextResponse.json(
+      { success: false, error: "Missing client_id query param." },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const body = await request.json();
+    const { clientId: bodyClientId, callUuid, customerPhone, durationSec, ttsAudioDurationMs, usage } = body as {
+      clientId?: string;
+      callUuid?: string;
+      customerPhone?: string;
+      durationSec?: number;
+      ttsAudioDurationMs?: number;
+      usage?: CallUsage;
+    };
+
+    if (bodyClientId !== clientId) {
+      return NextResponse.json(
+        { success: false, error: "client_id query param and body do not match." },
+        { status: 400 }
+      );
+    }
+    if (!callUuid || !usage) {
+      return NextResponse.json(
+        { success: false, error: "callUuid and usage are required." },
+        { status: 400 }
+      );
+    }
+
+    const cost = computeCallCost(usage);
+
+    const supabase = getSupabaseAdmin();
+    const table = process.env.SUPABASE_CALLS_TABLE ?? "calls";
+    const { error } = await supabase.from(table).insert({
+      client_id: clientId,
+      call_uuid: callUuid,
+      customer_phone: customerPhone ?? "",
+      duration_sec: durationSec ?? usage.callDurationSec,
+      llm_prompt_tokens: usage.llmPromptTokens,
+      llm_completion_tokens: usage.llmCompletionTokens,
+      stt_audio_duration_ms: usage.sttAudioDurationMs,
+      tts_characters_count: usage.ttsCharactersCount,
+      tts_audio_duration_ms: ttsAudioDurationMs ?? null,
+      llm_cost_inr: cost.llmCostInr,
+      stt_cost_inr: cost.sttCostInr,
+      tts_cost_inr: cost.ttsCostInr,
+      livekit_cost_inr: cost.livekitCostInr,
+      total_cost_inr: cost.totalCostInr,
+      pricing_version: cost.pricingVersion,
+      created_at: new Date().toISOString(),
+    });
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error("Call cost insert failed", error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
 }
