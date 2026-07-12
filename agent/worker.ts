@@ -42,8 +42,11 @@ async function fetchAgentSettings(): Promise<{ welcomeMessage: string; systemPro
   }
 }
 
+// Pinned (not the floating gemini-flash-lite-latest alias) after A/B testing showed
+// ~20% lower avg LLM TTFT and ~11% lower avg total turn latency vs. gemini-2.5-flash,
+// with no observed workflow/quality drift across 3 test calls (37 turns).
 const MODEL_DEFAULTS = {
-  geminiModel: 'gemini-2.5-flash',
+  geminiModel: 'gemini-3.1-flash-lite',
   sttModel: 'saaras:v3',
   ttsModel: 'bulbul:v2',
   ttsVoice: 'anushka',
@@ -96,12 +99,16 @@ const GEMINI_THINKING_BUDGET = 0;
 // Don't stack this with further endpointing changes until we've watched real calls on the
 // current config — both affect the same turn-taking decision, so stacking them would make
 // it hard to tell which change caused any new interruption issues.
-const ENDPOINTING_MIN_DELAY_MS = 400;
+//
+// minDelay raised 400ms -> 600ms after test calls showed premature turn commits ("transcript
+// arrives after turn has been committed" warnings) and mid-sentence caller cut-offs — 400ms was
+// tighter than Sarvam's typical 700-1200ms transcription delay. Costs ~200ms on fast turns.
+const ENDPOINTING_MIN_DELAY_MS = 600;
 const ENDPOINTING_MAX_DELAY_MS = 1200;
 
-// A/B testing knob: overrides the dashboard-configured Gemini model when set, so we can
-// swap models for a test batch (e.g. LLM_MODEL=gemini-2.5-flash-lite) without touching the
-// Providers page. Falls back to the tenant's configured model when unset.
+// A/B testing knob: overrides the dashboard-configured Gemini model when set, so future
+// model swaps for a test batch don't require touching the Providers page. Not needed for
+// the current pinned default (see MODEL_DEFAULTS.geminiModel) — leave unset in production.
 const LLM_MODEL_OVERRIDE = process.env.LLM_MODEL;
 
 type TurnLatency = { eouDelayMs?: number; llmTtftMs?: number; ttsTtfbMs?: number };
