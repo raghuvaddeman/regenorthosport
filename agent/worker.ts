@@ -82,6 +82,12 @@ async function fetchProviderModels(): Promise<typeof MODEL_DEFAULTS> {
 // 0 disables Gemini's internal reasoning pass, which otherwise inflates LLM TTFT.
 const GEMINI_THINKING_BUDGET = 0;
 
+// turnDetection is left unset, so the SDK auto-provisions its streaming audio-model
+// turn detector, whose default endpointing window (300-2500ms) was capping EOU delay
+// at 2500ms on hesitant turns. Tightened here without changing the detector itself.
+const ENDPOINTING_MIN_DELAY_MS = 400;
+const ENDPOINTING_MAX_DELAY_MS = 1200;
+
 type TurnLatency = { eouDelayMs?: number; llmTtftMs?: number; ttsTtfbMs?: number };
 
 /**
@@ -90,9 +96,13 @@ type TurnLatency = { eouDelayMs?: number; llmTtftMs?: number; ttsTtfbMs?: number
  * to the SDK's built-in structured metrics logger. Logs a [LATENCY] SUMMARY
  * line when the call ends. Logging only — does not touch STT/TTS/LLM behavior.
  */
-function attachLatencyLogging(session: voice.AgentSession, activeConfig: { thinkingBudget: number }) {
+function attachLatencyLogging(
+  session: voice.AgentSession,
+  activeConfig: { thinkingBudget: number; endpointingMinDelayMs: number; endpointingMaxDelayMs: number }
+) {
   console.log(
-    `[LATENCY] config thinking_budget=${activeConfig.thinkingBudget} (${activeConfig.thinkingBudget === 0 ? 'disabled' : 'enabled'})`
+    `[LATENCY] config thinking_budget=${activeConfig.thinkingBudget} (${activeConfig.thinkingBudget === 0 ? 'disabled' : 'enabled'}) ` +
+      `endpointing_min=${activeConfig.endpointingMinDelayMs}ms endpointing_max=${activeConfig.endpointingMaxDelayMs}ms`
   );
 
   const turns = new Map<string, TurnLatency>();
@@ -188,9 +198,16 @@ export default defineAgent({
         thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET },
       }),
       tts: new sarvam.TTS({ model: models.ttsModel as any, speaker: models.ttsVoice, targetLanguageCode: 'en-IN' }),
+      turnHandling: {
+        endpointing: { minDelay: ENDPOINTING_MIN_DELAY_MS, maxDelay: ENDPOINTING_MAX_DELAY_MS },
+      },
     });
 
-    attachLatencyLogging(session, { thinkingBudget: GEMINI_THINKING_BUDGET });
+    attachLatencyLogging(session, {
+      thinkingBudget: GEMINI_THINKING_BUDGET,
+      endpointingMinDelayMs: ENDPOINTING_MIN_DELAY_MS,
+      endpointingMaxDelayMs: ENDPOINTING_MAX_DELAY_MS,
+    });
 
     const agent = new voice.Agent({
       instructions: settings?.systemPrompt ?? FALLBACK_INSTRUCTIONS,
