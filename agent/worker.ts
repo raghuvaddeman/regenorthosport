@@ -79,22 +79,33 @@ async function fetchProviderModels(): Promise<typeof MODEL_DEFAULTS> {
   }
 }
 
+// 0 disables Gemini's internal reasoning pass, which otherwise inflates LLM TTFT.
+const GEMINI_THINKING_BUDGET = 0;
+
 type TurnLatency = { eouDelayMs?: number; llmTtftMs?: number; ttsTtfbMs?: number };
 
 /**
  * Subscribes to the session's `metrics_collected` events and logs per-turn
  * latency breakdown ([LATENCY] lines) correlated by `speech_id`, in addition
- * to the SDK's built-in structured metrics logger. Logging only — does not
- * touch STT/TTS/LLM behavior.
+ * to the SDK's built-in structured metrics logger. Logs a [LATENCY] SUMMARY
+ * line when the call ends. Logging only — does not touch STT/TTS/LLM behavior.
  */
-function attachLatencyLogging(session: voice.AgentSession) {
+function attachLatencyLogging(session: voice.AgentSession, activeConfig: { thinkingBudget: number }) {
+  console.log(
+    `[LATENCY] config thinking_budget=${activeConfig.thinkingBudget} (${activeConfig.thinkingBudget === 0 ? 'disabled' : 'enabled'})`
+  );
+
   const turns = new Map<string, TurnLatency>();
+  const completedTotalsMs: number[] = [];
+  const completedTtftMs: number[] = [];
 
   const maybeLogTotal = (speechId: string) => {
     const t = turns.get(speechId);
     if (!t || t.eouDelayMs === undefined || t.llmTtftMs === undefined || t.ttsTtfbMs === undefined) return;
     const total = t.eouDelayMs + t.llmTtftMs + t.ttsTtfbMs;
     console.log(`[LATENCY] speech_id=${speechId} TOTAL=${Math.round(total)}ms`);
+    completedTotalsMs.push(total);
+    completedTtftMs.push(t.llmTtftMs);
     turns.delete(speechId);
   };
 
@@ -119,7 +130,9 @@ function attachLatencyLogging(session: voice.AgentSession) {
       }
       case 'llm_metrics': {
         const speechId = m.speechId ?? 'unknown';
-        console.log(`[LATENCY] speech_id=${speechId} stage=llm ttft=${Math.round(m.ttftMs)}ms`);
+        console.log(
+          `[LATENCY] speech_id=${speechId} stage=llm ttft=${Math.round(m.ttftMs)}ms promptTokens=${m.promptTokens} completionTokens=${m.completionTokens}`
+        );
         if (m.speechId) {
           const t = turns.get(m.speechId) ?? {};
           if (t.llmTtftMs === undefined) t.llmTtftMs = m.ttftMs;
@@ -143,6 +156,17 @@ function attachLatencyLogging(session: voice.AgentSession) {
         break;
     }
   });
+
+  session.on(AgentSessionEventTypes.Close, () => {
+    if (completedTotalsMs.length === 0) return;
+    const turnCount = completedTotalsMs.length;
+    const avg = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
+    console.log(
+      `[LATENCY] SUMMARY turns=${turnCount} avg_total=${Math.round(avg(completedTotalsMs))}ms ` +
+        `min_total=${Math.round(Math.min(...completedTotalsMs))}ms max_total=${Math.round(Math.max(...completedTotalsMs))}ms ` +
+        `avg_llm_ttft=${Math.round(avg(completedTtftMs))}ms`
+    );
+  });
 }
 
 export default defineAgent({
@@ -158,11 +182,15 @@ export default defineAgent({
     const session = new voice.AgentSession({
       vad: ctx.proc.userData.vad as silero.VAD,
       stt: new sarvam.STT({ model: models.sttModel as any, languageCode: 'en-IN' }),
-      llm: new google.LLM({ model: models.geminiModel, apiKey: process.env.GEMINI_API_KEY }),
+      llm: new google.LLM({
+        model: models.geminiModel,
+        apiKey: process.env.GEMINI_API_KEY,
+        thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET },
+      }),
       tts: new sarvam.TTS({ model: models.ttsModel as any, speaker: models.ttsVoice, targetLanguageCode: 'en-IN' }),
     });
 
-    attachLatencyLogging(session);
+    attachLatencyLogging(session, { thinkingBudget: GEMINI_THINKING_BUDGET });
 
     const agent = new voice.Agent({
       instructions: settings?.systemPrompt ?? FALLBACK_INSTRUCTIONS,
