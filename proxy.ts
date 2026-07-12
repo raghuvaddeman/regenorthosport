@@ -1,7 +1,12 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// Define exactly what routes require authentication
-const isProtectedRoute = createRouteMatcher(["/dashboard(.*)", "/api/calls(.*)"]);
+// Define exactly what routes require authentication.
+// /api/calls is deliberately excluded — like /api/agent-settings and /api/providers,
+// it does its own dual auth inside the route handler (Clerk session for GET,
+// x-internal-secret for the worker's POST). Clerk's auth.protect() runs before any
+// route code and returns a bare 404 for unauthenticated requests regardless of what
+// other auth headers they carry, which would silently block the worker's POST.
+const isProtectedRoute = createRouteMatcher(["/dashboard(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {

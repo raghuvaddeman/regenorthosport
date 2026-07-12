@@ -84,7 +84,15 @@ async function fetchProviderModels(): Promise<typeof MODEL_DEFAULTS> {
 }
 
 // 0 disables Gemini's internal reasoning pass, which otherwise inflates LLM TTFT.
+// Gemini 3.x models (the plugin detects this by checking if the model name contains
+// "gemini-3") ignore thinkingBudget entirely and warn on every turn — they use
+// thinkingLevel instead, with 'MINIMAL' being the lowest setting available (there's
+// no full "off" for Gemini 3). Passing both fields lets the plugin pick whichever one
+// applies to the active model without a warning: Gemini 2.5-and-earlier models use
+// thinkingBudget and silently ignore thinkingLevel, Gemini 3.x models use thinkingLevel
+// and silently ignore thinkingBudget. See node_modules/@livekit/agents-plugin-google/dist/llm.js.
 const GEMINI_THINKING_BUDGET = 0;
+const GEMINI_THINKING_LEVEL = 'MINIMAL';
 
 // turnDetection is left unset, so the SDK auto-provisions its streaming audio-model
 // turn detector, whose default endpointing window (300-2500ms) was capping EOU delay
@@ -160,6 +168,7 @@ function attachLatencyLogging(
     sttModel: string;
     ttsModel: string;
     thinkingBudget: number;
+    thinkingLevel: string;
     endpointingMinDelayMs: number;
     endpointingMaxDelayMs: number;
     callUuid: string;
@@ -167,9 +176,11 @@ function attachLatencyLogging(
     callInfo: { customerPhone: string };
   }
 ) {
+  // The active LLM only honors one of thinkingBudget/thinkingLevel depending on
+  // whether it's a Gemini 3.x model or earlier — see GEMINI_THINKING_LEVEL comment.
   console.log(
     `[LATENCY] config llm_model=${activeConfig.llmModel} ` +
-      `thinking_budget=${activeConfig.thinkingBudget} (${activeConfig.thinkingBudget === 0 ? 'disabled' : 'enabled'}) ` +
+      `thinking_budget=${activeConfig.thinkingBudget} thinking_level=${activeConfig.thinkingLevel} ` +
       `endpointing_min=${activeConfig.endpointingMinDelayMs}ms endpointing_max=${activeConfig.endpointingMaxDelayMs}ms`
   );
 
@@ -302,7 +313,7 @@ export default defineAgent({
       llm: new google.LLM({
         model: geminiModel,
         apiKey: process.env.GEMINI_API_KEY,
-        thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET },
+        thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET, thinkingLevel: GEMINI_THINKING_LEVEL as any },
       }),
       tts: new sarvam.TTS({ model: models.ttsModel as any, speaker: models.ttsVoice, targetLanguageCode: 'en-IN' }),
       turnHandling: {
@@ -315,6 +326,7 @@ export default defineAgent({
       sttModel: models.sttModel,
       ttsModel: models.ttsModel,
       thinkingBudget: GEMINI_THINKING_BUDGET,
+      thinkingLevel: GEMINI_THINKING_LEVEL,
       endpointingMinDelayMs: ENDPOINTING_MIN_DELAY_MS,
       endpointingMaxDelayMs: ENDPOINTING_MAX_DELAY_MS,
       callUuid,
