@@ -85,8 +85,24 @@ const GEMINI_THINKING_BUDGET = 0;
 // turnDetection is left unset, so the SDK auto-provisions its streaming audio-model
 // turn detector, whose default endpointing window (300-2500ms) was capping EOU delay
 // at 2500ms on hesitant turns. Tightened here without changing the detector itself.
+//
+// FUTURE EXPERIMENT (parked, not applied): AgentSessionOptions.turnHandling.turnDetection
+// supports 'stt' in @livekit/agents 1.5.0 (TurnDetectionMode includes 'stt' — see
+// dist/voice/agent_session.d.ts), which would commit turns off Sarvam's own end-of-speech
+// signal instead of this streaming audio-model detector, with endpointing minDelay/maxDelay
+// applied on top of that instead. Likely removes one inference hop from the latency chain,
+// but trades away the audio model's more nuanced "is the caller done talking" judgment for
+// plain VAD-style silence detection, which is more prone to cutting off mid-thought pauses.
+// Don't stack this with further endpointing changes until we've watched real calls on the
+// current config — both affect the same turn-taking decision, so stacking them would make
+// it hard to tell which change caused any new interruption issues.
 const ENDPOINTING_MIN_DELAY_MS = 400;
 const ENDPOINTING_MAX_DELAY_MS = 1200;
+
+// A/B testing knob: overrides the dashboard-configured Gemini model when set, so we can
+// swap models for a test batch (e.g. LLM_MODEL=gemini-2.5-flash-lite) without touching the
+// Providers page. Falls back to the tenant's configured model when unset.
+const LLM_MODEL_OVERRIDE = process.env.LLM_MODEL;
 
 type TurnLatency = { eouDelayMs?: number; llmTtftMs?: number; ttsTtfbMs?: number };
 
@@ -98,10 +114,16 @@ type TurnLatency = { eouDelayMs?: number; llmTtftMs?: number; ttsTtfbMs?: number
  */
 function attachLatencyLogging(
   session: voice.AgentSession,
-  activeConfig: { thinkingBudget: number; endpointingMinDelayMs: number; endpointingMaxDelayMs: number }
+  activeConfig: {
+    llmModel: string;
+    thinkingBudget: number;
+    endpointingMinDelayMs: number;
+    endpointingMaxDelayMs: number;
+  }
 ) {
   console.log(
-    `[LATENCY] config thinking_budget=${activeConfig.thinkingBudget} (${activeConfig.thinkingBudget === 0 ? 'disabled' : 'enabled'}) ` +
+    `[LATENCY] config llm_model=${activeConfig.llmModel} ` +
+      `thinking_budget=${activeConfig.thinkingBudget} (${activeConfig.thinkingBudget === 0 ? 'disabled' : 'enabled'}) ` +
       `endpointing_min=${activeConfig.endpointingMinDelayMs}ms endpointing_max=${activeConfig.endpointingMaxDelayMs}ms`
   );
 
@@ -188,12 +210,13 @@ export default defineAgent({
     await ctx.connect();
 
     const [settings, models] = await Promise.all([fetchAgentSettings(), fetchProviderModels()]);
+    const geminiModel = LLM_MODEL_OVERRIDE ?? models.geminiModel;
 
     const session = new voice.AgentSession({
       vad: ctx.proc.userData.vad as silero.VAD,
       stt: new sarvam.STT({ model: models.sttModel as any, languageCode: 'en-IN' }),
       llm: new google.LLM({
-        model: models.geminiModel,
+        model: geminiModel,
         apiKey: process.env.GEMINI_API_KEY,
         thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET },
       }),
@@ -204,6 +227,7 @@ export default defineAgent({
     });
 
     attachLatencyLogging(session, {
+      llmModel: geminiModel,
       thinkingBudget: GEMINI_THINKING_BUDGET,
       endpointingMinDelayMs: ENDPOINTING_MIN_DELAY_MS,
       endpointingMaxDelayMs: ENDPOINTING_MAX_DELAY_MS,
