@@ -1,6 +1,16 @@
 import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
-import { defineAgent, cli, voice, type JobContext, type JobProcess, ServerOptions } from '@livekit/agents';
+import {
+  defineAgent,
+  cli,
+  voice,
+  metrics,
+  AgentSessionEventTypes,
+  type JobContext,
+  type JobProcess,
+  type MetricsCollectedEvent,
+  ServerOptions,
+} from '@livekit/agents';
 import * as google from '@livekit/agents-plugin-google';
 import * as sarvam from '@livekit/agents-plugin-sarvam';
 import * as silero from '@livekit/agents-plugin-silero';
@@ -69,6 +79,72 @@ async function fetchProviderModels(): Promise<typeof MODEL_DEFAULTS> {
   }
 }
 
+type TurnLatency = { eouDelayMs?: number; llmTtftMs?: number; ttsTtfbMs?: number };
+
+/**
+ * Subscribes to the session's `metrics_collected` events and logs per-turn
+ * latency breakdown ([LATENCY] lines) correlated by `speech_id`, in addition
+ * to the SDK's built-in structured metrics logger. Logging only — does not
+ * touch STT/TTS/LLM behavior.
+ */
+function attachLatencyLogging(session: voice.AgentSession) {
+  const turns = new Map<string, TurnLatency>();
+
+  const maybeLogTotal = (speechId: string) => {
+    const t = turns.get(speechId);
+    if (!t || t.eouDelayMs === undefined || t.llmTtftMs === undefined || t.ttsTtfbMs === undefined) return;
+    const total = t.eouDelayMs + t.llmTtftMs + t.ttsTtfbMs;
+    console.log(`[LATENCY] speech_id=${speechId} TOTAL=${Math.round(total)}ms`);
+    turns.delete(speechId);
+  };
+
+  session.on(AgentSessionEventTypes.MetricsCollected, (ev: MetricsCollectedEvent) => {
+    // Baseline structured log via the SDK's built-in helper.
+    metrics.logMetrics(ev.metrics);
+
+    const m = ev.metrics;
+    switch (m.type) {
+      case 'eou_metrics': {
+        const speechId = m.speechId ?? 'unknown';
+        console.log(
+          `[LATENCY] speech_id=${speechId} stage=eou eou_delay=${Math.round(m.endOfUtteranceDelayMs)}ms transcription_delay=${Math.round(m.transcriptionDelayMs)}ms`
+        );
+        if (m.speechId) {
+          const t = turns.get(m.speechId) ?? {};
+          if (t.eouDelayMs === undefined) t.eouDelayMs = m.endOfUtteranceDelayMs;
+          turns.set(m.speechId, t);
+          maybeLogTotal(m.speechId);
+        }
+        break;
+      }
+      case 'llm_metrics': {
+        const speechId = m.speechId ?? 'unknown';
+        console.log(`[LATENCY] speech_id=${speechId} stage=llm ttft=${Math.round(m.ttftMs)}ms`);
+        if (m.speechId) {
+          const t = turns.get(m.speechId) ?? {};
+          if (t.llmTtftMs === undefined) t.llmTtftMs = m.ttftMs;
+          turns.set(m.speechId, t);
+          maybeLogTotal(m.speechId);
+        }
+        break;
+      }
+      case 'tts_metrics': {
+        const speechId = m.speechId ?? 'unknown';
+        console.log(`[LATENCY] speech_id=${speechId} stage=tts ttfb=${Math.round(m.ttfbMs)}ms`);
+        if (m.speechId) {
+          const t = turns.get(m.speechId) ?? {};
+          if (t.ttsTtfbMs === undefined) t.ttsTtfbMs = m.ttfbMs;
+          turns.set(m.speechId, t);
+          maybeLogTotal(m.speechId);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  });
+}
+
 export default defineAgent({
   prewarm: async (proc: JobProcess) => {
     proc.userData.vad = await silero.VAD.load();
@@ -85,6 +161,8 @@ export default defineAgent({
       llm: new google.LLM({ model: models.geminiModel, apiKey: process.env.GEMINI_API_KEY }),
       tts: new sarvam.TTS({ model: models.ttsModel as any, speaker: models.ttsVoice, targetLanguageCode: 'en-IN' }),
     });
+
+    attachLatencyLogging(session);
 
     const agent = new voice.Agent({
       instructions: settings?.systemPrompt ?? FALLBACK_INSTRUCTIONS,
