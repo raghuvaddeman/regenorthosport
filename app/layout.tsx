@@ -21,7 +21,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Callwise — AI Receptionist Analytics",
+  title: "ROS AI Voice Dashboard",
   description: "Call telemetry, transcripts and AI quality analysis.",
 };
 
