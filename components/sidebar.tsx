@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUser, useClerk } from "@clerk/nextjs";
@@ -141,9 +142,17 @@ export default function Sidebar() {
 
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 transform flex-col border-r border-gray-200 bg-white transition-transform duration-200 ease-in-out md:translate-x-0 md:static ${isOpen ? "translate-x-0" : "-translate-x-full"} dark:border-zinc-600 dark:bg-zinc-800`}>
         <div className="flex h-16 items-center border-b border-gray-200 px-6 dark:border-zinc-600">
-          <Link href="/dashboard" className="flex items-center gap-2.5 font-semibold tracking-tight text-gray-900 dark:text-white">
-            <svg viewBox="0 0 76 65" className="h-4 w-auto fill-current"><path d="M37.5274 0L75.0548 65H0L37.5274 0Z"/></svg>
-            <span className="text-sm">RegenOrthoSport</span>
+          <Link href="/dashboard" className="flex items-center">
+            <div className="rounded-md bg-white px-2 py-1.5">
+              <Image
+                src="/logo.png"
+                alt="RegenOrthoSport"
+                width={1676}
+                height={220}
+                priority
+                className="h-6 w-auto"
+              />
+            </div>
           </Link>
         </div>
 
