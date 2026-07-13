@@ -21,6 +21,22 @@
   --font-mono: var(--font-mono), monospace;
 }
 
+/* Brand red, sampled from the RegenOrthoSport mark (#b41f24). Plain @theme
+   (not "inline") since these are static literals, not runtime var references —
+   @theme inline doesn't reliably generate utilities for a novel color scale. */
+@theme {
+  --color-brand-50: #fef2f2;
+  --color-brand-100: #fde3e3;
+  --color-brand-200: #fbcbcb;
+  --color-brand-300: #f5a3a3;
+  --color-brand-400: #ec6f6f;
+  --color-brand-500: #d43438;
+  --color-brand-600: #b41f24;
+  --color-brand-700: #8f1a1e;
+  --color-brand-800: #711619;
+  --color-brand-900: #5c1417;
+}
+
 :root {
   color-scheme: light;
 }

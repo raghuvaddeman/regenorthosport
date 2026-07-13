@@ -12,9 +12,12 @@ import { TimeRangeFilter } from "@/components/time-range-filter";
 import { filterByRange, type TimeRange } from "@/lib/time-range";
 import {
   ArrowRight,
+  BarChart3,
   MessageSquareText,
+  Phone,
   Play,
   Pause,
+  PieChart,
   Star,
   TrendingUp,
   TrendingDown,
@@ -24,50 +27,67 @@ import {
 
 /* ----------------------------- Small pieces ----------------------------- */
 
+const KPI_TONES = {
+  brand: "bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400",
+  amber: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400",
+  emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400",
+} as const;
+
 function KpiCard({
   icon: Icon,
   label,
   value,
   delta,
   up,
+  tone,
 }: {
   icon: React.ElementType;
   label: string;
   value: string;
   delta: string;
   up: boolean;
+  tone: keyof typeof KPI_TONES;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-600 dark:bg-zinc-700">
-      <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
-        <Icon className="h-4 w-4" />
-        {label}
+    <div className="rounded-2xl border border-zinc-200/70 bg-white p-6 shadow-sm ring-1 ring-black/[0.02] transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">{label}</span>
+        <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${KPI_TONES[tone]}`}>
+          <Icon className="h-4 w-4" />
+        </div>
       </div>
-      <div className="mt-2 font-mono text-2xl font-semibold tabular-nums tracking-tight">
+      <div className="mt-4 font-mono text-3xl font-semibold tabular-nums tracking-tight text-zinc-900 dark:text-white">
         {value}
       </div>
       <div
-        className={`mt-1.5 inline-flex items-center gap-1 text-xs font-medium ${
+        className={`mt-2.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
           up
-            ? "text-emerald-600 dark:text-emerald-400"
-            : "text-rose-600 dark:text-rose-400"
+            ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+            : "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
         }`}
       >
-        {up ? (
-          <TrendingUp className="h-3.5 w-3.5" />
-        ) : (
-          <TrendingDown className="h-3.5 w-3.5" />
-        )}
-        {delta} vs last week
+        {up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+        {delta} <span className="font-normal opacity-70">vs last week</span>
       </div>
     </div>
   );
 }
 
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+function ChartCard({
+  title,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  icon: React.ElementType;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-600 dark:bg-zinc-700">
-      <h3 className="mb-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">{title}</h3>
+    <div className="h-full rounded-2xl border border-zinc-200/70 bg-white p-6 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
+      <div className="mb-5 flex items-center gap-2">
+        <Icon className="h-4 w-4 text-zinc-400" />
+        <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">{title}</h3>
+      </div>
       {children}
     </div>
   );
@@ -111,7 +131,7 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">Dashboard</h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
             Live call telemetry from your AI receptionist.
           </p>
@@ -140,6 +160,7 @@ export default function DashboardPage() {
           value={String(kpis.n)}
           delta="↑ 12%"
           up
+          tone="brand"
         />
         <KpiCard
           icon={Clock}
@@ -147,6 +168,7 @@ export default function DashboardPage() {
           value={mmss(kpis.avgDur)}
           delta="↓ 4%"
           up={false}
+          tone="amber"
         />
         <KpiCard
           icon={Star}
@@ -154,25 +176,26 @@ export default function DashboardPage() {
           value={kpis.avgRating}
           delta="↑ 0.3"
           up
+          tone="emerald"
         />
       </div>
 
       {/* Charts */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <ChartCard title="Calls over time">
+          <ChartCard title="Calls over time" icon={BarChart3}>
             <CallsBarChart calls={rangeCalls} />
           </ChartCard>
         </div>
-        <ChartCard title="Rating distribution">
+        <ChartCard title="Rating distribution" icon={PieChart}>
           <RatingDonutChart calls={rangeCalls} />
         </ChartCard>
       </div>
 
       {/* Recent calls */}
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-600 dark:bg-zinc-700">
-        <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3 dark:border-zinc-600">
-          <h3 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">Recent calls</h3>
+      <div className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
+        <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-4 dark:border-zinc-700">
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Recent calls</h3>
           <Link
             href="/dashboard/calls"
             className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
@@ -180,14 +203,14 @@ export default function DashboardPage() {
             View all in Call Logs <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
-        <div className="divide-y divide-zinc-100 dark:divide-zinc-600/70">
+        <div className="divide-y divide-zinc-100 dark:divide-zinc-700/70">
           {loading && recentCalls.length === 0 && (
-            <div className="py-8 text-center text-sm text-zinc-400 animate-pulse">
+            <div className="py-10 text-center text-sm text-zinc-400 animate-pulse">
               Streaming secure backend records...
             </div>
           )}
           {!loading && recentCalls.length === 0 && (
-            <div className="py-8 text-center text-sm text-zinc-400">
+            <div className="py-10 text-center text-sm text-zinc-400">
               No verified call records isolated for this client context.
             </div>
           )}
@@ -196,14 +219,21 @@ export default function DashboardPage() {
             return (
               <div
                 key={c.uuid}
-                className="group flex cursor-pointer items-center gap-4 px-5 py-3 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-600/40"
+                className="group flex cursor-pointer items-center gap-4 px-6 py-3.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-700/40"
                 onClick={() => setOpen(c)}
               >
-                <span className="w-24 shrink-0 whitespace-nowrap font-mono text-xs text-zinc-500 dark:text-zinc-400">
-                  {shortDate(c.at)}
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-400 dark:bg-zinc-700 dark:text-zinc-500">
+                  <Phone className="h-3.5 w-3.5" />
+                </div>
+                <div className="w-32 shrink-0">
+                  <span className="whitespace-nowrap font-mono text-xs text-zinc-500 dark:text-zinc-400">
+                    {shortDate(c.at)}
+                  </span>
+                </div>
+                <span className="w-28 shrink-0 whitespace-nowrap font-mono text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                  {c.phone}
                 </span>
-                <span className="w-28 shrink-0 whitespace-nowrap font-mono text-xs">{c.phone}</span>
-                <span className="w-14 shrink-0 whitespace-nowrap font-mono text-xs tabular-nums">
+                <span className="w-14 shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
                   {mmss(c.durationSec)}
                 </span>
                 <RatingBadge value={c.rating} />
@@ -216,12 +246,12 @@ export default function DashboardPage() {
                     play(c);
                   }}
                   disabled={!c.recordingUrl}
-                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-zinc-200 text-zinc-400 transition-colors hover:border-indigo-500 hover:text-indigo-600 disabled:opacity-30 dark:border-zinc-500 dark:hover:text-indigo-400"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 text-zinc-400 transition-colors hover:border-indigo-500 hover:text-indigo-600 disabled:opacity-30 dark:border-zinc-600 dark:hover:text-indigo-400"
                   aria-label={isCurrent ? "Pause recording" : "Play recording"}
                 >
                   {isCurrent ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 pl-px" />}
                 </button>
-                <MessageSquareText className="h-4 w-4 shrink-0 text-zinc-300 group-hover:text-indigo-500 dark:text-zinc-500" />
+                <MessageSquareText className="h-4 w-4 shrink-0 text-zinc-300 group-hover:text-indigo-500 dark:text-zinc-600" />
               </div>
             );
           })}
