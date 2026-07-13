@@ -77,19 +77,27 @@ function KpiCard({
 /* -------------------------------- The page ------------------------------ */
 
 type SortKey = "at" | "durationSec" | "rating" | "clientId";
-type TimeRange = "today" | "7d" | "30d" | "all";
+type TimeRange = "today" | "7d" | "30d" | "90d" | "thisMonth" | "prevMonth" | "all" | "custom";
 
 const RANGE_LABELS: Record<TimeRange, string> = {
   today: "Today",
   "7d": "Last 7 days",
   "30d": "Last 30 days",
+  "90d": "Last 90 days",
+  thisMonth: "This month",
+  prevMonth: "Previous month",
   all: "All time",
+  custom: "Custom range",
 };
 
-function isStartOfToday(t: number): boolean {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return t >= d.getTime();
+function startOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
 }
 
 export default function DashboardPage() {
@@ -99,18 +107,56 @@ export default function DashboardPage() {
   const [open, setOpen] = useState<Call | null>(null);
   const [rowAudio, setRowAudio] = useState<string | null>(null);
   const [range, setRange] = useState<TimeRange>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const rowAudioRef = useRef<HTMLAudioElement>(null);
 
   const rangeCalls = useMemo(() => {
     if (!liveCalls) return [];
-    if (range === "all") return liveCalls;
-    if (range === "today") {
-      return liveCalls.filter((c) => isStartOfToday(new Date(c.at).getTime()));
+    const now = new Date();
+
+    switch (range) {
+      case "all":
+        return liveCalls;
+      case "today": {
+        const cutoff = startOfDay(now).getTime();
+        return liveCalls.filter((c) => new Date(c.at).getTime() >= cutoff);
+      }
+      case "7d":
+      case "30d":
+      case "90d": {
+        const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
+        const cutoff = now.getTime() - days * 24 * 60 * 60 * 1000;
+        return liveCalls.filter((c) => new Date(c.at).getTime() >= cutoff);
+      }
+      case "thisMonth": {
+        const cutoff = startOfMonth(now).getTime();
+        return liveCalls.filter((c) => new Date(c.at).getTime() >= cutoff);
+      }
+      case "prevMonth": {
+        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+        const end = startOfMonth(now).getTime();
+        return liveCalls.filter((c) => {
+          const t = new Date(c.at).getTime();
+          return t >= start && t < end;
+        });
+      }
+      case "custom": {
+        if (!customFrom && !customTo) return liveCalls;
+        const start = customFrom ? startOfDay(new Date(customFrom)).getTime() : -Infinity;
+        // "to" is inclusive of the whole day, so the upper bound is the start of the next day.
+        const end = customTo
+          ? startOfDay(new Date(customTo)).getTime() + 24 * 60 * 60 * 1000
+          : Infinity;
+        return liveCalls.filter((c) => {
+          const t = new Date(c.at).getTime();
+          return t >= start && t < end;
+        });
+      }
+      default:
+        return liveCalls;
     }
-    const days = range === "7d" ? 7 : 30;
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-    return liveCalls.filter((c) => new Date(c.at).getTime() >= cutoff);
-  }, [liveCalls, range]);
+  }, [liveCalls, range, customFrom, customTo]);
 
   const processedCalls = useMemo(() => {
     const sorted = [...rangeCalls].sort((a, b) => {
@@ -181,18 +227,39 @@ export default function DashboardPage() {
             Live call telemetry from your AI receptionist.
           </p>
         </div>
-        <select
-          value={range}
-          onChange={(e) => setRange(e.target.value as TimeRange)}
-          aria-label="Time range"
-          className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-700"
-        >
-          {(Object.keys(RANGE_LABELS) as TimeRange[]).map((r) => (
-            <option key={r} value={r}>
-              {RANGE_LABELS[r]}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={range}
+            onChange={(e) => setRange(e.target.value as TimeRange)}
+            aria-label="Time range"
+            className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-700"
+          >
+            {(Object.keys(RANGE_LABELS) as TimeRange[]).map((r) => (
+              <option key={r} value={r}>
+                {RANGE_LABELS[r]}
+              </option>
+            ))}
+          </select>
+          {range === "custom" && (
+            <>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                aria-label="Custom range start date"
+                className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-700"
+              />
+              <span className="text-sm text-zinc-400">to</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                aria-label="Custom range end date"
+                className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-700"
+              />
+            </>
+          )}
+        </div>
       </div>
 
       {error && (
