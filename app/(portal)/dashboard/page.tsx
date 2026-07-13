@@ -77,6 +77,20 @@ function KpiCard({
 /* -------------------------------- The page ------------------------------ */
 
 type SortKey = "at" | "durationSec" | "rating" | "clientId";
+type TimeRange = "today" | "7d" | "30d" | "all";
+
+const RANGE_LABELS: Record<TimeRange, string> = {
+  today: "Today",
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
+  all: "All time",
+};
+
+function isStartOfToday(t: number): boolean {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return t >= d.getTime();
+}
 
 export default function DashboardPage() {
   const { calls: liveCalls, loading, error } = useCallsContext();
@@ -84,11 +98,22 @@ export default function DashboardPage() {
   const [asc, setAsc] = useState(false);
   const [open, setOpen] = useState<Call | null>(null);
   const [rowAudio, setRowAudio] = useState<string | null>(null);
+  const [range, setRange] = useState<TimeRange>("all");
   const rowAudioRef = useRef<HTMLAudioElement>(null);
 
-  const processedCalls = useMemo(() => {
+  const rangeCalls = useMemo(() => {
     if (!liveCalls) return [];
-    const sorted = [...liveCalls].sort((a, b) => {
+    if (range === "all") return liveCalls;
+    if (range === "today") {
+      return liveCalls.filter((c) => isStartOfToday(new Date(c.at).getTime()));
+    }
+    const days = range === "7d" ? 7 : 30;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return liveCalls.filter((c) => new Date(c.at).getTime() >= cutoff);
+  }, [liveCalls, range]);
+
+  const processedCalls = useMemo(() => {
+    const sorted = [...rangeCalls].sort((a, b) => {
       const va = a[sortKey];
       const vb = b[sortKey];
       const cmp =
@@ -98,16 +123,16 @@ export default function DashboardPage() {
       return asc ? cmp : -cmp;
     });
     return sorted as Call[];
-  }, [liveCalls, sortKey, asc]);
+  }, [rangeCalls, sortKey, asc]);
 
   const kpis = useMemo(() => {
-    const list = liveCalls || [];
+    const list = rangeCalls;
     const n = list.length;
     if (n === 0) return { n: 0, avgDur: 0, avgRating: "0.0" };
     const avgDur = Math.round(list.reduce((s, c) => s + (c.durationSec || 0), 0) / n);
     const avgRating = (list.reduce((s, c) => s + (c.rating || 0), 0) / n).toFixed(1);
     return { n, avgDur, avgRating };
-  }, [liveCalls]);
+  }, [rangeCalls]);
 
   function header(label: string, key: SortKey) {
     const active = sortKey === key;
@@ -149,11 +174,25 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Live call telemetry from your AI receptionist.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            Live call telemetry from your AI receptionist.
+          </p>
+        </div>
+        <select
+          value={range}
+          onChange={(e) => setRange(e.target.value as TimeRange)}
+          aria-label="Time range"
+          className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-700"
+        >
+          {(Object.keys(RANGE_LABELS) as TimeRange[]).map((r) => (
+            <option key={r} value={r}>
+              {RANGE_LABELS[r]}
+            </option>
+          ))}
+        </select>
       </div>
 
       {error && (

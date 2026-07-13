@@ -32,8 +32,8 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider>
-      {/* Dark is the default operating mode; the sidebar toggle swaps the class. */}
-      <html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
+      {/* Light is the default operating mode; the sidebar toggle adds the .dark class. */}
+      <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
         <body className="min-h-screen bg-zinc-50 font-sans text-zinc-900 antialiased dark:bg-zinc-800 dark:text-zinc-100">
           {children}
         </body>

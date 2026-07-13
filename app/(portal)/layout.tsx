@@ -10,7 +10,7 @@ import Sidebar from "@/components/sidebar";
 import { Moon, Sun, LogOut, RefreshCw, AlertCircle } from "lucide-react";
 
 function PortalShell({ children }: { children: React.ReactNode }) {
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(false);
 
   const { signOut } = useClerk();
   const router = useRouter();

@@ -18,8 +18,19 @@ export const shortDate = (iso: string) =>
     minute: "2-digit",
   });
 
-export const clientLabel = (id: string) =>
-  id ? id.replace(/^CLIENT_/, "").replaceAll("_", " ").toLowerCase() : "unknown";
+// Display-only overrides — the underlying client_id (Supabase row isolation,
+// Clerk tenant metadata) is left untouched; this only controls what's rendered.
+const CLIENT_DISPLAY_NAMES: Record<string, string> = {
+  CLIENT_SUNRISE_REALTY: "RegenOrthoSport",
+};
+
+export const clientLabel = (id: string) => {
+  if (!id) return "unknown";
+  return (
+    CLIENT_DISPLAY_NAMES[id] ??
+    id.replace(/^CLIENT_/, "").replaceAll("_", " ").toLowerCase()
+  );
+};
 
 /* ----------------------------- Small pieces ----------------------------- */
 
