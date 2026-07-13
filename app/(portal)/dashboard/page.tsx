@@ -1,7 +1,7 @@
 // app/(portal)/dashboard/page.tsx
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useCallsContext } from "@/lib/calls-context";
 import type { Call } from "@/lib/use-calls";
 import {
@@ -15,6 +15,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  ChevronDown,
   Play,
   Pause,
   Star,
@@ -98,6 +99,64 @@ function startOfDay(d: Date): Date {
 
 function startOfMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+/* Custom dropdown, not a native <select> — a native select's popup opens around
+   whichever option is currently selected, so with 8 options it can open upward
+   and obscure the page. This always opens directly below the trigger button. */
+function RangeDropdown({
+  range,
+  onChange,
+}: {
+  range: TimeRange;
+  onChange: (r: TimeRange) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Time range"
+        aria-expanded={open}
+        className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-700"
+      >
+        {RANGE_LABELS[range]}
+        <ChevronDown className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-600 dark:bg-zinc-700">
+          {(Object.keys(RANGE_LABELS) as TimeRange[]).map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => {
+                onChange(r);
+                setOpen(false);
+              }}
+              className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-50 dark:hover:bg-zinc-600 ${
+                range === r
+                  ? "font-medium text-indigo-600 dark:text-indigo-400"
+                  : "text-zinc-700 dark:text-zinc-300"
+              }`}
+            >
+              {RANGE_LABELS[r]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function DashboardPage() {
@@ -228,18 +287,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={range}
-            onChange={(e) => setRange(e.target.value as TimeRange)}
-            aria-label="Time range"
-            className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-700"
-          >
-            {(Object.keys(RANGE_LABELS) as TimeRange[]).map((r) => (
-              <option key={r} value={r}>
-                {RANGE_LABELS[r]}
-              </option>
-            ))}
-          </select>
+          <RangeDropdown range={range} onChange={setRange} />
           {range === "custom" && (
             <>
               <input
