@@ -170,7 +170,10 @@ function getEgressClient(): EgressClient | null {
   const host = process.env.LIVEKIT_URL;
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
-  if (!host || !apiKey || !apiSecret) return null;
+  if (!host || !apiKey || !apiSecret) {
+    console.warn('[RECORDING] Egress client not created: LIVEKIT_URL/API_KEY/API_SECRET missing.');
+    return null;
+  }
   return new EgressClient(host, apiKey, apiSecret);
 }
 
@@ -181,7 +184,16 @@ function buildRecordingOutput(callUuid: string): EncodedFileOutput | null {
   const region = process.env.SUPABASE_S3_REGION;
   const endpoint = process.env.SUPABASE_S3_ENDPOINT;
   const bucket = process.env.SUPABASE_S3_BUCKET;
-  if (!accessKey || !secret || !region || !endpoint || !bucket) return null;
+  if (!accessKey || !secret || !region || !endpoint || !bucket) {
+    console.warn('[RECORDING] Recording output not built: one or more SUPABASE_S3_* env vars missing.', {
+      hasAccessKey: !!accessKey,
+      hasSecret: !!secret,
+      hasRegion: !!region,
+      hasEndpoint: !!endpoint,
+      hasBucket: !!bucket,
+    });
+    return null;
+  }
 
   return new EncodedFileOutput({
     fileType: EncodedFileType.MP3,
@@ -203,14 +215,25 @@ async function stopEgressAndGetUrl(
 ): Promise<string | null> {
   const bucket = process.env.SUPABASE_S3_BUCKET;
   const projectUrl = process.env.SUPABASE_PROJECT_URL;
-  if (!egressClient || !egressId || !bucket || !projectUrl) return null;
+  if (!egressClient || !egressId || !bucket || !projectUrl) {
+    console.warn('[RECORDING] No recording URL: egressClient/egressId/bucket/projectUrl missing.', {
+      hasEgressClient: !!egressClient,
+      egressId: egressId || '(empty)',
+      hasBucket: !!bucket,
+      hasProjectUrl: !!projectUrl,
+    });
+    return null;
+  }
 
   try {
-    await withTimeout(egressClient.stopEgress(egressId), 5_000, undefined);
+    const info = await withTimeout(egressClient.stopEgress(egressId), 5_000, undefined);
+    console.log('[RECORDING] Egress stopped:', info ? `status=${info.status}` : 'timed out waiting for stop confirmation');
   } catch (err: any) {
-    console.warn('Egress stop failed:', err.message);
+    console.warn('[RECORDING] Egress stop failed:', err.message);
   }
-  return `${projectUrl}/storage/v1/object/public/${bucket}/calls/${callUuid}.mp3`;
+  const url = `${projectUrl}/storage/v1/object/public/${bucket}/calls/${callUuid}.mp3`;
+  console.log('[RECORDING] Recording URL:', url);
+  return url;
 }
 
 const SUMMARY_PROMPT_PREFIX =
@@ -229,13 +252,26 @@ async function buildTranscriptAndSummary(
   session: voice.AgentSession,
   geminiModel: string
 ): Promise<{ transcript: string | null; aiSummary: string | null; summaryPromptTokens: number; summaryCompletionTokens: number }> {
+  console.log(
+    '[RECORDING] session.history.items:',
+    session.history.items.length,
+    'types:',
+    session.history.items.map((item) => item.type).join(',')
+  );
+
   const transcript = session.history.items
     .filter((item): item is ChatMessage => item.type === 'message' && (item.role === 'user' || item.role === 'assistant'))
     .map((m) => `${m.role === 'assistant' ? 'Agent' : 'Caller'}: ${m.textContent ?? ''}`)
     .join('\n');
 
+  console.log('[RECORDING] Extracted transcript length:', transcript.length, 'chars');
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!transcript || !apiKey) {
+    console.warn('[RECORDING] Skipping AI summary: transcript or GEMINI_API_KEY missing.', {
+      transcriptLength: transcript.length,
+      hasApiKey: !!apiKey,
+    });
     return { transcript: transcript || null, aiSummary: null, summaryPromptTokens: 0, summaryCompletionTokens: 0 };
   }
 
@@ -245,6 +281,7 @@ async function buildTranscriptAndSummary(
       model: geminiModel,
       contents: [{ role: 'user', parts: [{ text: SUMMARY_PROMPT_PREFIX + transcript }] }],
     });
+    console.log('[RECORDING] AI summary generated:', resp.text ?? '(empty)');
     return {
       transcript,
       aiSummary: resp.text ?? null,
@@ -252,7 +289,7 @@ async function buildTranscriptAndSummary(
       summaryCompletionTokens: resp.usageMetadata?.candidatesTokenCount ?? 0,
     };
   } catch (err: any) {
-    console.warn('AI summary generation failed:', err.message);
+    console.warn('[RECORDING] AI summary generation failed:', err.message);
     return { transcript, aiSummary: null, summaryPromptTokens: 0, summaryCompletionTokens: 0 };
   }
 }
@@ -481,10 +518,13 @@ export default defineAgent({
             audioOnly: true,
           });
           callInfo.egressId = egressInfo.egressId;
+          console.log('[RECORDING] Egress started:', egressInfo.egressId, 'status=', egressInfo.status);
         } catch (err: any) {
-          console.warn('Egress start failed:', err.message);
+          console.warn('[RECORDING] Egress start failed:', err.message);
         }
       }
+    } else {
+      console.warn('[RECORDING] Skipping egress: egressClient is null.');
     }
 
     await session.generateReply({
