@@ -236,6 +236,22 @@ async function stopEgressAndGetUrl(
   return url;
 }
 
+// STT runs hardcoded in en-IN, so callers speaking Hindi/Telugu/etc. end up as
+// phonetic, Latin-script transcription (e.g. "Nenu appointment repu morning
+// teesukuntaanandi") rather than English. This translates that into clean English
+// before storing — live call behavior (STT/TTS language) is untouched; this only
+// affects what gets saved to the transcript/summary columns after the call ends.
+const TRANSLATE_PROMPT_PREFIX =
+  'This is a call transcript from a healthcare practice. Agent is the AI receptionist, Caller is the ' +
+  'patient. Lines may be in Hindi, Telugu, or other Indian languages, or phonetically transliterated into ' +
+  'English/Latin script. Produce a clean, fully-English version. Rules:\n' +
+  '- Translate every non-English line/phrase to natural English.\n' +
+  '- CRITICAL: preserve every number, price, time, and quantity EXACTLY as stated in the original — do not ' +
+  '"correct", round, or otherwise alter any numeric value.\n' +
+  '- Keep the exact "Agent: "/"Caller: " line prefixes and one-line-per-turn structure unchanged.\n' +
+  '- Do not add commentary, headers, or anything else — output only the transcript lines.\n\n' +
+  'Transcript:\n';
+
 const SUMMARY_PROMPT_PREFIX =
   'Summarize this healthcare-practice phone call in 2-4 sentences for a front-desk dashboard. ' +
   "Include: the caller's stated reason for calling, any action taken or promised (e.g. appointment " +
@@ -243,10 +259,12 @@ const SUMMARY_PROMPT_PREFIX =
   'Transcript:\n';
 
 /**
- * Extracts a speaker-attributed transcript from the session's chat history and asks
- * Gemini for a short summary. The "Agent: "/"Caller: " line prefixes are required by
- * the dashboard's transcript parser (app/(portal)/dashboard/page.tsx). Both extraction
- * and the summary call are best-effort — a failure here never blocks the cost report.
+ * Extracts a speaker-attributed transcript from the session's chat history, translates
+ * it to clean English, and asks Gemini for a short summary. The "Agent: "/"Caller: "
+ * line prefixes are required by the dashboard's transcript parser
+ * (app/(portal)/dashboard/page.tsx). Extraction, translation, and summary are each
+ * best-effort — a failure at any stage never blocks the cost report, and translation
+ * failure falls back to the raw (possibly non-English) transcript rather than losing it.
  */
 async function buildTranscriptAndSummary(
   session: voice.AgentSession,
@@ -259,38 +277,55 @@ async function buildTranscriptAndSummary(
     session.history.items.map((item) => item.type).join(',')
   );
 
-  const transcript = session.history.items
+  const rawTranscript = session.history.items
     .filter((item): item is ChatMessage => item.type === 'message' && (item.role === 'user' || item.role === 'assistant'))
     .map((m) => `${m.role === 'assistant' ? 'Agent' : 'Caller'}: ${m.textContent ?? ''}`)
     .join('\n');
 
-  console.log('[RECORDING] Extracted transcript length:', transcript.length, 'chars');
+  console.log('[RECORDING] Extracted transcript length:', rawTranscript.length, 'chars');
 
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!transcript || !apiKey) {
-    console.warn('[RECORDING] Skipping AI summary: transcript or GEMINI_API_KEY missing.', {
-      transcriptLength: transcript.length,
+  if (!rawTranscript || !apiKey) {
+    console.warn('[RECORDING] Skipping translation/summary: transcript or GEMINI_API_KEY missing.', {
+      transcriptLength: rawTranscript.length,
       hasApiKey: !!apiKey,
     });
-    return { transcript: transcript || null, aiSummary: null, summaryPromptTokens: 0, summaryCompletionTokens: 0 };
+    return { transcript: rawTranscript || null, aiSummary: null, summaryPromptTokens: 0, summaryCompletionTokens: 0 };
+  }
+
+  const genai = new GoogleGenAI({ apiKey });
+  let transcript = rawTranscript;
+  let promptTokens = 0;
+  let completionTokens = 0;
+
+  try {
+    const translateResp = await genai.models.generateContent({
+      model: geminiModel,
+      contents: [{ role: 'user', parts: [{ text: TRANSLATE_PROMPT_PREFIX + rawTranscript }] }],
+    });
+    if (translateResp.text) transcript = translateResp.text;
+    promptTokens += translateResp.usageMetadata?.promptTokenCount ?? 0;
+    completionTokens += translateResp.usageMetadata?.candidatesTokenCount ?? 0;
+    console.log('[RECORDING] Transcript translated, length:', transcript.length, 'chars');
+  } catch (err: any) {
+    console.warn('[RECORDING] Transcript translation failed, using raw transcript:', err.message);
   }
 
   try {
-    const genai = new GoogleGenAI({ apiKey });
-    const resp = await genai.models.generateContent({
+    const summaryResp = await genai.models.generateContent({
       model: geminiModel,
       contents: [{ role: 'user', parts: [{ text: SUMMARY_PROMPT_PREFIX + transcript }] }],
     });
-    console.log('[RECORDING] AI summary generated:', resp.text ?? '(empty)');
+    console.log('[RECORDING] AI summary generated:', summaryResp.text ?? '(empty)');
     return {
       transcript,
-      aiSummary: resp.text ?? null,
-      summaryPromptTokens: resp.usageMetadata?.promptTokenCount ?? 0,
-      summaryCompletionTokens: resp.usageMetadata?.candidatesTokenCount ?? 0,
+      aiSummary: summaryResp.text ?? null,
+      summaryPromptTokens: promptTokens + (summaryResp.usageMetadata?.promptTokenCount ?? 0),
+      summaryCompletionTokens: completionTokens + (summaryResp.usageMetadata?.candidatesTokenCount ?? 0),
     };
   } catch (err: any) {
     console.warn('[RECORDING] AI summary generation failed:', err.message);
-    return { transcript, aiSummary: null, summaryPromptTokens: 0, summaryCompletionTokens: 0 };
+    return { transcript, aiSummary: null, summaryPromptTokens: promptTokens, summaryCompletionTokens: completionTokens };
   }
 }
 
@@ -423,7 +458,9 @@ function attachLatencyLogging(
     void (async () => {
       const [recordingUrl, artifacts] = await Promise.all([
         stopEgressAndGetUrl(activeConfig.egressClient, activeConfig.callInfo.egressId, activeConfig.callUuid),
-        withTimeout(buildTranscriptAndSummary(session, activeConfig.llmModel), 10_000, {
+        // 18s, not 10s: this now makes two sequential Gemini calls (translate, then
+        // summarize) instead of one.
+        withTimeout(buildTranscriptAndSummary(session, activeConfig.llmModel), 18_000, {
           transcript: null,
           aiSummary: null,
           summaryPromptTokens: 0,
