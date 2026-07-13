@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Search, Shield, User, Landmark, Play, Pause, MessageSquareText } from "lucide-react";
 import { useAudio } from "./audio-player";
 import { useCallsContext } from "@/lib/calls-context";
 import { CallSlideOver } from "./call-slide-over";
+import { TimeRangeFilter } from "./time-range-filter";
+import { filterByRange, type TimeRange } from "@/lib/time-range";
 import type { Call } from "@/lib/use-calls";
 
 /* ----------------- CALL LOGS VIEW ----------------- */
@@ -13,9 +15,17 @@ export function CallLogsView() {
   const [search, setSearch] = useState("");
   const [minRating, setMinRating] = useState("0");
   const [openCall, setOpenCall] = useState<Call | null>(null);
+  const [range, setRange] = useState<TimeRange>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const { currentCall, isPlaying, play } = useAudio();
 
-  const filteredCalls = calls.filter((c) => {
+  const rangeCalls = useMemo(
+    () => filterByRange(calls, range, customFrom, customTo),
+    [calls, range, customFrom, customTo]
+  );
+
+  const filteredCalls = rangeCalls.filter((c) => {
     const matchesSearch =
       c.phone.toLowerCase().includes(search.toLowerCase()) ||
       c.summary.toLowerCase().includes(search.toLowerCase()) ||
@@ -31,7 +41,7 @@ export function CallLogsView() {
           <h1 className="text-2xl font-bold tracking-tight">Call Audit Logs</h1>
           <p className="text-sm text-zinc-500">Search and audit across your conversational data streams.</p>
         </div>
-        <div className="flex gap-3 w-full sm:w-auto">
+        <div className="flex flex-wrap gap-3 w-full sm:w-auto">
           <div className="relative flex-1 sm:w-64">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
             <input
@@ -52,6 +62,14 @@ export function CallLogsView() {
             <option value="3">3★ & Above</option>
             <option value="1">Underperforming</option>
           </select>
+          <TimeRangeFilter
+            range={range}
+            onRangeChange={setRange}
+            customFrom={customFrom}
+            onCustomFromChange={setCustomFrom}
+            customTo={customTo}
+            onCustomToChange={setCustomTo}
+          />
         </div>
       </div>
 
