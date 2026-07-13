@@ -6,6 +6,7 @@ import {
   voice,
   metrics,
   AgentSessionEventTypes,
+  type ChatMessage,
   type JobContext,
   type JobProcess,
   type MetricsCollectedEvent,
@@ -14,6 +15,9 @@ import {
 import * as google from '@livekit/agents-plugin-google';
 import * as sarvam from '@livekit/agents-plugin-sarvam';
 import * as silero from '@livekit/agents-plugin-silero';
+import { EgressClient } from 'livekit-server-sdk';
+import { EncodedFileOutput, EncodedFileType, S3Upload } from '@livekit/protocol';
+import { GoogleGenAI } from '@google/genai';
 import type { CallUsage } from '../lib/pricing/call-cost';
 
 const FALLBACK_INSTRUCTIONS =
@@ -121,10 +125,10 @@ const ENDPOINTING_MAX_DELAY_MS = 1200;
 const LLM_MODEL_OVERRIDE = process.env.LLM_MODEL;
 
 /**
- * Reports a completed call's usage to the dashboard for cost computation/storage.
- * Fire-and-forget: never blocks or throws into the caller, matches the pattern used
- * by fetchAgentSettings/startHeartbeat. A failed report means that call's cost row
- * is permanently missing (no retry) — logged via console.warn only.
+ * Reports a completed call's usage (and, when available, its recording/transcript/
+ * summary) to the dashboard. Fire-and-forget: never blocks or throws into the caller,
+ * matches the pattern used by fetchAgentSettings/startHeartbeat. A failed report means
+ * that call's row is permanently missing (no retry) — logged via console.warn only.
  */
 async function reportCallCost(payload: {
   callUuid: string;
@@ -132,6 +136,9 @@ async function reportCallCost(payload: {
   durationSec: number;
   ttsAudioDurationMs: number;
   usage: CallUsage;
+  recordingUrl: string | null;
+  transcript: string | null;
+  aiSummary: string | null;
 }) {
   const appUrl = process.env.APP_URL;
   const secret = process.env.INTERNAL_SECRET_KEY;
@@ -150,6 +157,103 @@ async function reportCallCost(payload: {
     if (!res.ok) console.warn('Call cost report failed:', res.status, await res.text().catch(() => ''));
   } catch (err: any) {
     console.warn('Call cost report failed:', err.message);
+  }
+}
+
+/** Resolves after `ms` with `fallback` if `promise` hasn't settled by then. */
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([promise, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
+}
+
+/** Null if LIVEKIT_URL/API_KEY/API_SECRET aren't set — recording becomes a no-op, not an error. */
+function getEgressClient(): EgressClient | null {
+  const host = process.env.LIVEKIT_URL;
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  if (!host || !apiKey || !apiSecret) return null;
+  return new EgressClient(host, apiKey, apiSecret);
+}
+
+/** Null if the SUPABASE_S3_* env vars aren't fully configured — recording becomes a no-op. */
+function buildRecordingOutput(callUuid: string): EncodedFileOutput | null {
+  const accessKey = process.env.SUPABASE_S3_ACCESS_KEY_ID;
+  const secret = process.env.SUPABASE_S3_SECRET_ACCESS_KEY;
+  const region = process.env.SUPABASE_S3_REGION;
+  const endpoint = process.env.SUPABASE_S3_ENDPOINT;
+  const bucket = process.env.SUPABASE_S3_BUCKET;
+  if (!accessKey || !secret || !region || !endpoint || !bucket) return null;
+
+  return new EncodedFileOutput({
+    fileType: EncodedFileType.MP3,
+    filepath: `calls/${callUuid}.mp3`,
+    output: { case: 's3', value: new S3Upload({ accessKey, secret, region, endpoint, bucket, forcePathStyle: true }) },
+  });
+}
+
+/**
+ * Stops the egress (bounded wait — doesn't block indefinitely if the stop call hangs)
+ * and returns the recording's public URL. The URL is deterministic from the filepath
+ * we chose at start time, so it's returned even if the stop confirmation times out —
+ * the file lands there regardless once LiveKit finishes flushing it.
+ */
+async function stopEgressAndGetUrl(
+  egressClient: EgressClient | null,
+  egressId: string,
+  callUuid: string
+): Promise<string | null> {
+  const bucket = process.env.SUPABASE_S3_BUCKET;
+  const projectUrl = process.env.SUPABASE_PROJECT_URL;
+  if (!egressClient || !egressId || !bucket || !projectUrl) return null;
+
+  try {
+    await withTimeout(egressClient.stopEgress(egressId), 5_000, undefined);
+  } catch (err: any) {
+    console.warn('Egress stop failed:', err.message);
+  }
+  return `${projectUrl}/storage/v1/object/public/${bucket}/calls/${callUuid}.mp3`;
+}
+
+const SUMMARY_PROMPT_PREFIX =
+  'Summarize this healthcare-practice phone call in 2-4 sentences for a front-desk dashboard. ' +
+  "Include: the caller's stated reason for calling, any action taken or promised (e.g. appointment " +
+  'request logged, callback promised), and any follow-up needed. Be concise and factual, no preamble.\n\n' +
+  'Transcript:\n';
+
+/**
+ * Extracts a speaker-attributed transcript from the session's chat history and asks
+ * Gemini for a short summary. The "Agent: "/"Caller: " line prefixes are required by
+ * the dashboard's transcript parser (app/(portal)/dashboard/page.tsx). Both extraction
+ * and the summary call are best-effort — a failure here never blocks the cost report.
+ */
+async function buildTranscriptAndSummary(
+  session: voice.AgentSession,
+  geminiModel: string
+): Promise<{ transcript: string | null; aiSummary: string | null; summaryPromptTokens: number; summaryCompletionTokens: number }> {
+  const transcript = session.history.items
+    .filter((item): item is ChatMessage => item.type === 'message' && (item.role === 'user' || item.role === 'assistant'))
+    .map((m) => `${m.role === 'assistant' ? 'Agent' : 'Caller'}: ${m.textContent ?? ''}`)
+    .join('\n');
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!transcript || !apiKey) {
+    return { transcript: transcript || null, aiSummary: null, summaryPromptTokens: 0, summaryCompletionTokens: 0 };
+  }
+
+  try {
+    const genai = new GoogleGenAI({ apiKey });
+    const resp = await genai.models.generateContent({
+      model: geminiModel,
+      contents: [{ role: 'user', parts: [{ text: SUMMARY_PROMPT_PREFIX + transcript }] }],
+    });
+    return {
+      transcript,
+      aiSummary: resp.text ?? null,
+      summaryPromptTokens: resp.usageMetadata?.promptTokenCount ?? 0,
+      summaryCompletionTokens: resp.usageMetadata?.candidatesTokenCount ?? 0,
+    };
+  } catch (err: any) {
+    console.warn('AI summary generation failed:', err.message);
+    return { transcript, aiSummary: null, summaryPromptTokens: 0, summaryCompletionTokens: 0 };
   }
 }
 
@@ -173,7 +277,8 @@ function attachLatencyLogging(
     endpointingMaxDelayMs: number;
     callUuid: string;
     callStartedAt: number;
-    callInfo: { customerPhone: string };
+    callInfo: { customerPhone: string; egressId: string };
+    egressClient: EgressClient | null;
   }
 ) {
   // The active LLM only honors one of thinkingBudget/thinkingLevel depending on
@@ -273,22 +378,42 @@ function attachLatencyLogging(
     }
 
     const durationSec = Math.round((Date.now() - activeConfig.callStartedAt) / 1000);
-    void reportCallCost({
-      callUuid: activeConfig.callUuid,
-      customerPhone: activeConfig.callInfo.customerPhone,
-      durationSec,
-      ttsAudioDurationMs,
-      usage: {
-        geminiModel: activeConfig.llmModel,
-        llmPromptTokens,
-        llmCompletionTokens,
-        sttModel: activeConfig.sttModel,
-        sttAudioDurationMs,
-        ttsModel: activeConfig.ttsModel,
-        ttsCharactersCount,
-        callDurationSec: durationSec,
-      },
-    });
+
+    // Recording/transcript/summary take real wall-clock time (Egress flush, one Gemini
+    // call), so they can't be attached synchronously here. This outer `void` keeps
+    // session Close itself non-blocking exactly as before — only the background report
+    // is delayed, never call teardown.
+    void (async () => {
+      const [recordingUrl, artifacts] = await Promise.all([
+        stopEgressAndGetUrl(activeConfig.egressClient, activeConfig.callInfo.egressId, activeConfig.callUuid),
+        withTimeout(buildTranscriptAndSummary(session, activeConfig.llmModel), 10_000, {
+          transcript: null,
+          aiSummary: null,
+          summaryPromptTokens: 0,
+          summaryCompletionTokens: 0,
+        }),
+      ]);
+
+      await reportCallCost({
+        callUuid: activeConfig.callUuid,
+        customerPhone: activeConfig.callInfo.customerPhone,
+        durationSec,
+        ttsAudioDurationMs,
+        recordingUrl,
+        transcript: artifacts.transcript,
+        aiSummary: artifacts.aiSummary,
+        usage: {
+          geminiModel: activeConfig.llmModel,
+          llmPromptTokens: llmPromptTokens + artifacts.summaryPromptTokens,
+          llmCompletionTokens: llmCompletionTokens + artifacts.summaryCompletionTokens,
+          sttModel: activeConfig.sttModel,
+          sttAudioDurationMs,
+          ttsModel: activeConfig.ttsModel,
+          ttsCharactersCount,
+          callDurationSec: durationSec,
+        },
+      });
+    })();
   });
 }
 
@@ -302,7 +427,8 @@ export default defineAgent({
 
     const callStartedAt = Date.now();
     const callUuid = ctx.job.id || crypto.randomUUID();
-    const callInfo = { customerPhone: '' };
+    const callInfo = { customerPhone: '', egressId: '' };
+    const egressClient = getEgressClient();
 
     const [settings, models] = await Promise.all([fetchAgentSettings(), fetchProviderModels()]);
     const geminiModel = LLM_MODEL_OVERRIDE ?? models.geminiModel;
@@ -332,6 +458,7 @@ export default defineAgent({
       callUuid,
       callStartedAt,
       callInfo,
+      egressClient,
     });
 
     const agent = new voice.Agent({
@@ -345,6 +472,20 @@ export default defineAgent({
     // gone from ctx.room.remoteParticipants.
     const participant = [...ctx.room.remoteParticipants.values()][0];
     callInfo.customerPhone = participant?.identity?.replace(/^sip_/, '') ?? '';
+
+    if (egressClient) {
+      const recordingOutput = buildRecordingOutput(callUuid);
+      if (recordingOutput) {
+        try {
+          const egressInfo = await egressClient.startRoomCompositeEgress(ctx.room.name ?? callUuid, recordingOutput, {
+            audioOnly: true,
+          });
+          callInfo.egressId = egressInfo.egressId;
+        } catch (err: any) {
+          console.warn('Egress start failed:', err.message);
+        }
+      }
+    }
 
     await session.generateReply({
       instructions: settings?.welcomeMessage

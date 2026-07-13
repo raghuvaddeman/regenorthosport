@@ -166,13 +166,26 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { clientId: bodyClientId, callUuid, customerPhone, durationSec, ttsAudioDurationMs, usage } = body as {
+    const {
+      clientId: bodyClientId,
+      callUuid,
+      customerPhone,
+      durationSec,
+      ttsAudioDurationMs,
+      usage,
+      recordingUrl,
+      transcript,
+      aiSummary,
+    } = body as {
       clientId?: string;
       callUuid?: string;
       customerPhone?: string;
       durationSec?: number;
       ttsAudioDurationMs?: number;
       usage?: CallUsage;
+      recordingUrl?: string | null;
+      transcript?: string | null;
+      aiSummary?: string | null;
     };
 
     if (bodyClientId !== clientId) {
@@ -202,6 +215,9 @@ export async function POST(request: NextRequest) {
       stt_audio_duration_ms: usage.sttAudioDurationMs,
       tts_characters_count: usage.ttsCharactersCount,
       tts_audio_duration_ms: ttsAudioDurationMs ?? null,
+      recording_url: recordingUrl ?? null,
+      transcript: transcript ?? null,
+      ai_summary: aiSummary ?? null,
       llm_cost_inr: cost.llmCostInr,
       stt_cost_inr: cost.sttCostInr,
       tts_cost_inr: cost.ttsCostInr,
