@@ -1,25 +1,34 @@
 // components/charts.tsx
 // Lightweight, dependency-free charts (plain SVG / CSS) for the Dashboard
-// summary — matches the rest of the app's handcrafted-bars approach rather
-// than pulling in a charting library for two visuals.
+// summary — matches the rest of the app's handcrafted-visuals approach
+// rather than pulling in a charting library for two visuals.
 "use client";
 
+import { useId } from "react";
 import type { Call } from "@/lib/use-calls";
 
 /* ----------------------------- Calls per day ----------------------------- */
 
-export function CallsBarChart({ calls }: { calls: Call[] }) {
+const CHART_W = 700;
+const CHART_H = 260;
+const PAD_L = 34;
+const PAD_R = 16;
+const PAD_T = 16;
+const PAD_B = 30;
+
+export function CallsLineChart({ calls }: { calls: Call[] }) {
+  const gradientId = useId();
+
   const buckets = new Map<string, number>();
   for (const c of calls) {
     const key = new Date(c.at).toISOString().slice(0, 10); // YYYY-MM-DD
     buckets.set(key, (buckets.get(key) ?? 0) + 1);
   }
   const days = [...buckets.keys()].sort();
-  const maxCount = Math.max(1, ...buckets.values());
 
   if (days.length === 0) {
     return (
-      <div className="flex h-48 items-center justify-center text-sm text-zinc-400">
+      <div className="flex h-64 items-center justify-center text-sm text-zinc-400">
         No calls in this range yet.
       </div>
     );
@@ -28,30 +37,119 @@ export function CallsBarChart({ calls }: { calls: Call[] }) {
   const label = (key: string) =>
     new Date(`${key}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
 
+  const counts = days.map((d) => buckets.get(d)!);
+  const maxCount = Math.max(...counts);
+  const niceMax = Math.max(2, Math.ceil(maxCount / 2) * 2);
+  const tickCount = 6;
+  const ticks = Array.from({ length: tickCount + 1 }, (_, i) => Math.round((niceMax / tickCount) * i));
+
+  const plotW = CHART_W - PAD_L - PAD_R;
+  const plotH = CHART_H - PAD_T - PAD_B;
+  const baselineY = PAD_T + plotH;
+
+  const points = days.map((d, i) => {
+    const x = PAD_L + (days.length === 1 ? plotW / 2 : (i / (days.length - 1)) * plotW);
+    const y = PAD_T + (1 - buckets.get(d)! / niceMax) * plotH;
+    return { x, y, day: d, count: buckets.get(d)! };
+  });
+
+  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
+  const areaPath = `${linePath} L${points[points.length - 1].x},${baselineY} L${points[0].x},${baselineY} Z`;
+
+  const last = points[points.length - 1];
+  const tooltipW = 64;
+  const tooltipX = Math.min(Math.max(last.x - tooltipW / 2, PAD_L), CHART_W - PAD_R - tooltipW);
+  const tooltipY = Math.max(last.y - 52, 4);
+
   return (
-    <div className="flex h-48 items-end gap-2 overflow-x-auto pb-1">
-      {days.map((key) => {
-        const count = buckets.get(key)!;
-        const heightPct = Math.max(5, (count / maxCount) * 100);
+    <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} preserveAspectRatio="none" className="h-64 w-full">
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--color-brand-500)" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="var(--color-brand-500)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+
+      {/* gridlines + y-axis labels */}
+      {ticks.map((t) => {
+        const y = PAD_T + (1 - t / niceMax) * plotH;
         return (
-          <div key={key} className="flex min-w-[30px] flex-1 flex-col items-center gap-2">
-            <div className="flex h-36 w-full items-end border-b border-zinc-100 dark:border-zinc-700/70">
-              <div
-                className="w-full rounded-t-md bg-gradient-to-t from-indigo-600 to-indigo-400 shadow-[0_1px_6px_rgba(79,70,229,0.35)] transition-all duration-300 hover:from-indigo-700 hover:to-indigo-400 dark:from-indigo-500 dark:to-indigo-400"
-                style={{ height: `${heightPct}%` }}
-                title={`${count} call${count === 1 ? "" : "s"} on ${label(key)}`}
-              />
-            </div>
-            <span className="text-[10px] font-medium tabular-nums text-zinc-500 dark:text-zinc-400">
-              {count}
-            </span>
-            <span className="whitespace-nowrap text-[9px] text-zinc-400 dark:text-zinc-500">
-              {label(key)}
-            </span>
-          </div>
+          <g key={t}>
+            <line
+              x1={PAD_L}
+              y1={y}
+              x2={CHART_W - PAD_R}
+              y2={y}
+              stroke="currentColor"
+              strokeWidth="1"
+              strokeDasharray="4 4"
+              className="text-zinc-100 dark:text-zinc-700/60"
+            />
+            <text x={PAD_L - 8} y={y + 3} textAnchor="end" className="fill-zinc-400 text-[9px]">
+              {t}
+            </text>
+          </g>
         );
       })}
-    </div>
+
+      {/* x-axis labels */}
+      {points.map((p) => (
+        <text
+          key={p.day}
+          x={p.x}
+          y={CHART_H - 8}
+          textAnchor="middle"
+          className="fill-zinc-400 text-[9px]"
+        >
+          {label(p.day)}
+        </text>
+      ))}
+
+      <path d={areaPath} fill={`url(#${gradientId})`} />
+      <path
+        d={linePath}
+        fill="none"
+        stroke="var(--color-brand-600)"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+
+      {points.map((p, i) => (
+        <circle
+          key={p.day}
+          cx={p.x}
+          cy={p.y}
+          r={i === points.length - 1 ? 5 : 3}
+          fill={i === points.length - 1 ? "var(--color-brand-600)" : "white"}
+          stroke="var(--color-brand-600)"
+          strokeWidth="2"
+        >
+          <title>
+            {p.count} call{p.count === 1 ? "" : "s"} on {label(p.day)}
+          </title>
+        </circle>
+      ))}
+
+      {/* highlight tooltip on the most recent day */}
+      <g>
+        <rect
+          x={tooltipX}
+          y={tooltipY}
+          width={tooltipW}
+          height={40}
+          rx={8}
+          className="fill-white stroke-zinc-200 dark:fill-zinc-800 dark:stroke-zinc-600"
+          strokeWidth="1"
+        />
+        <text x={tooltipX + tooltipW / 2} y={tooltipY + 16} textAnchor="middle" className="fill-zinc-700 text-[10px] font-semibold dark:fill-zinc-200">
+          {label(last.day)}
+        </text>
+        <text x={tooltipX + tooltipW / 2} y={tooltipY + 30} textAnchor="middle" className="fill-zinc-400 text-[9px]">
+          {last.count} call{last.count === 1 ? "" : "s"}
+        </text>
+      </g>
+    </svg>
   );
 }
 
@@ -64,7 +162,7 @@ const RATING_SEGMENTS = [
   { key: "unrated", label: "Not yet rated", color: "#d4d4d8" },
 ] as const;
 
-export function RatingDonutChart({ calls }: { calls: Call[] }) {
+export function ratingCounts(calls: Call[]) {
   const counts = { high: 0, mid: 0, low: 0, unrated: 0 };
   for (const c of calls) {
     if (c.rating === 0) counts.unrated++;
@@ -72,6 +170,11 @@ export function RatingDonutChart({ calls }: { calls: Call[] }) {
     else if (c.rating === 3) counts.mid++;
     else counts.low++;
   }
+  return counts;
+}
+
+export function RatingDonutChart({ calls }: { calls: Call[] }) {
+  const counts = ratingCounts(calls);
   const total = calls.length;
 
   if (total === 0) {

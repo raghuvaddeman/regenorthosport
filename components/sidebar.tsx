@@ -166,9 +166,9 @@ export default function Sidebar() {
                   const Icon = item.icon;
                   return (
                     <li key={iIdx}>
-                      <Link href={item.href} onClick={() => setIsOpen(false)} aria-current={isActive ? "page" : undefined} className={`flex items-center justify-between rounded-md px-3 py-1.5 text-sm font-medium transition-all ${isActive ? "bg-gray-100 text-gray-900 dark:bg-zinc-700 dark:text-white" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-zinc-400 dark:hover:bg-zinc-700/50 dark:hover:text-zinc-200"}`}>
+                      <Link href={item.href} onClick={() => setIsOpen(false)} aria-current={isActive ? "page" : undefined} className={`flex items-center justify-between rounded-md px-3 py-1.5 text-sm font-medium transition-all ${isActive ? "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-400" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-zinc-400 dark:hover:bg-zinc-700/50 dark:hover:text-zinc-200"}`}>
                         <div className="flex items-center gap-2.5">
-                          <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-gray-900 dark:text-white" : "text-gray-400 dark:text-zinc-500"}`} />
+                          <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-brand-600 dark:text-brand-400" : "text-gray-400 dark:text-zinc-500"}`} />
                           <span>{item.label}</span>
                         </div>
                         {item.isBeta && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-gray-600 uppercase dark:bg-zinc-600 dark:text-zinc-400">Beta</span>}
