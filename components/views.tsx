@@ -1,15 +1,18 @@
 "use client";
 
 import React, { useState } from "react";
-import { Search, Shield, User, Landmark, Play, Pause } from "lucide-react";
+import { Search, Shield, User, Landmark, Play, Pause, MessageSquareText } from "lucide-react";
 import { useAudio } from "./audio-player";
 import { useCallsContext } from "@/lib/calls-context";
+import { CallSlideOver } from "./call-slide-over";
+import type { Call } from "@/lib/use-calls";
 
 /* ----------------- CALL LOGS VIEW ----------------- */
 export function CallLogsView() {
   const { calls, loading } = useCallsContext();
   const [search, setSearch] = useState("");
   const [minRating, setMinRating] = useState("0");
+  const [openCall, setOpenCall] = useState<Call | null>(null);
   const { currentCall, isPlaying, play } = useAudio();
 
   const filteredCalls = calls.filter((c) => {
@@ -63,19 +66,20 @@ export function CallLogsView() {
                 <th className="p-4 font-medium">Cost</th>
                 <th className="p-4 font-medium">Rating</th>
                 <th className="p-4 font-medium">AI Insight Summary</th>
+                <th className="p-4 font-medium text-center">Chat Transcript</th>
                 <th className="p-4 font-medium text-right">Playback</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-600">
               {loading && filteredCalls.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-zinc-400 animate-pulse">
+                  <td colSpan={8} className="p-8 text-center text-zinc-400 animate-pulse">
                     Loading call logs from Supabase…
                   </td>
                 </tr>
               ) : filteredCalls.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-zinc-400">No telemetry matches found.</td>
+                  <td colSpan={8} className="p-8 text-center text-zinc-400">No telemetry matches found.</td>
                 </tr>
               ) : (
                 filteredCalls.map((c) => {
@@ -96,6 +100,16 @@ export function CallLogsView() {
                         </span>
                       </td>
                       <td className="p-4 max-w-sm truncate text-zinc-600 dark:text-zinc-400" title={c.summary}>{c.summary}</td>
+                      <td className="p-4 text-center">
+                        <button
+                          onClick={() => setOpenCall(c)}
+                          disabled={!c.transcript}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-700 hover:bg-zinc-200 disabled:opacity-30 dark:bg-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-500"
+                          title="View chat transcript"
+                        >
+                          <MessageSquareText className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
                       <td className="p-4 text-right">
                         <button
                           onClick={() => play(c)}
@@ -113,6 +127,8 @@ export function CallLogsView() {
           </table>
         </div>
       </div>
+
+      {openCall && <CallSlideOver call={openCall} onClose={() => setOpenCall(null)} />}
     </div>
   );
 }
