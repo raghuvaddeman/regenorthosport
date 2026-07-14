@@ -1,20 +1,27 @@
-// app/(portal)/dashboard/campaigns/bulk-call/new/page.tsx
+// app/(portal)/dashboard/campaigns/bulk-call/[id]/edit/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, ChevronDown, FileUp, Loader2, Users } from "lucide-react";
-import { CONDITIONS, resolvePromptTemplate, type Condition } from "@/lib/campaigns/prompt-template";
+import { AlertTriangle, ArrowLeft, FileUp, Loader2, Users } from "lucide-react";
+import { CONDITIONS, type Condition } from "@/lib/campaigns/prompt-template";
 import { readContactsFile, type ParsedContact } from "@/lib/campaigns/parse-contacts";
 
 type OutboundTrunkOption = { sipTrunkId: string; name: string; numbers: string[] };
+type CampaignStatus = "draft" | "scheduled" | "in_progress" | "paused" | "completed" | "cancelled";
 
 const inputClasses =
   "w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-zinc-600 dark:bg-zinc-900";
 
-export default function NewBulkCallCampaignPage() {
+export default function EditBulkCallCampaignPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const router = useRouter();
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [status, setStatus] = useState<CampaignStatus | null>(null);
+  const [totalContacts, setTotalContacts] = useState(0);
 
   const [name, setName] = useState("");
   const [doctorName, setDoctorName] = useState("");
@@ -22,75 +29,53 @@ export default function NewBulkCallCampaignPage() {
   const [webinarDate, setWebinarDate] = useState("");
   const [webinarTime, setWebinarTime] = useState("18:00");
   const [meetingLink, setMeetingLink] = useState("");
-
-  // Scheduled call defaults to the webinar date at 4:00 PM until the user
-  // edits it directly — a day-before reminder or an evening webinar just
-  // means overriding these two fields, no code changes needed.
   const [scheduledCallDate, setScheduledCallDate] = useState("");
   const [scheduledCallTime, setScheduledCallTime] = useState("16:00");
-  const [scheduleTouched, setScheduleTouched] = useState(false);
-
-  useEffect(() => {
-    if (webinarDate && !scheduleTouched) setScheduledCallDate(webinarDate);
-  }, [webinarDate, scheduleTouched]);
-
-  // Call Script — pre-filled from the saved outbound template (or the inbound
-  // prompt as a starting point if no outbound template is set), live-resolved
-  // as Doctor/Condition/Webinar fields change until the user edits it directly.
-  const [rawTemplate, setRawTemplate] = useState<string | null>(null);
-  const [templateSource, setTemplateSource] = useState<"outbound" | "inbound" | null>(null);
-  const [loadingTemplate, setLoadingTemplate] = useState(true);
-  const [scriptExpanded, setScriptExpanded] = useState(false);
   const [resolvedPrompt, setResolvedPrompt] = useState("");
-  const [scriptDirty, setScriptDirty] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/agent-settings")
-      .then((res) => res.json())
-      .then((json) => {
-        if (!json.success) return;
-        const outbound = (json.data.outboundSystemPrompt ?? "").trim();
-        const inbound = (json.data.systemPrompt ?? "").trim();
-        if (outbound) {
-          setRawTemplate(outbound);
-          setTemplateSource("outbound");
-        } else {
-          setRawTemplate(inbound);
-          setTemplateSource("inbound");
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoadingTemplate(false));
-  }, []);
-
-  useEffect(() => {
-    if (rawTemplate === null || scriptDirty) return;
-    const ready = doctorName.trim() && webinarDate && webinarTime;
-    setResolvedPrompt(
-      ready
-        ? resolvePromptTemplate(rawTemplate, { doctorName: doctorName.trim(), condition, webinarDate, webinarTime })
-        : rawTemplate
-    );
-  }, [rawTemplate, doctorName, condition, webinarDate, webinarTime, scriptDirty]);
 
   const [outboundTrunks, setOutboundTrunks] = useState<OutboundTrunkOption[]>([]);
   const [loadingTrunks, setLoadingTrunks] = useState(true);
   const [selectedTrunkId, setSelectedTrunkId] = useState("");
   const [concurrentCallLimit, setConcurrentCallLimit] = useState(1);
+
+  // Contacts default to "keep what's already there" — only replaced if the
+  // user uploads a new file.
   const [fileName, setFileName] = useState<string | null>(null);
-  const [contacts, setContacts] = useState<ParsedContact[]>([]);
+  const [contacts, setContacts] = useState<ParsedContact[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/campaigns/bulk-call/${id}`, { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (!json.campaign) throw new Error(json.error || "Campaign not found.");
+        const c = json.campaign;
+        setStatus(c.status);
+        setTotalContacts(c.totalContacts ?? 0);
+        setName(c.name ?? "");
+        setDoctorName(c.doctorName ?? "");
+        setCondition((c.condition as Condition) ?? "Knee");
+        setWebinarDate(c.webinarDate ?? "");
+        setWebinarTime(c.webinarTime ?? "18:00");
+        setMeetingLink(c.meetingLink ?? "");
+        setScheduledCallDate(c.scheduledCallDate ?? "");
+        setScheduledCallTime(c.scheduledCallTime ?? "16:00");
+        setResolvedPrompt(c.resolvedPrompt ?? "");
+        setSelectedTrunkId(c.fromSipTrunkId ?? "");
+      })
+      .catch((err) => setLoadError(err.message || "Failed to load campaign."))
+      .finally(() => setLoading(false));
+  }, [id]);
 
   useEffect(() => {
     fetch("/api/telephony")
       .then((res) => res.json())
       .then((json) => {
         if (json.success) {
-          const trunks: OutboundTrunkOption[] = json.data.outboundTrunks || [];
-          setOutboundTrunks(trunks);
-          setSelectedTrunkId((prev) => prev || trunks[0]?.sipTrunkId || "");
+          setOutboundTrunks(json.data.outboundTrunks || []);
         }
       })
       .catch(() => {})
@@ -106,13 +91,13 @@ export default function NewBulkCallCampaignPage() {
       const parsed = await readContactsFile(file);
       if (parsed.length === 0) {
         setParseError("Couldn't find any valid phone numbers in that file.");
-        setContacts([]);
+        setContacts(null);
         return;
       }
       setContacts(parsed);
     } catch {
       setParseError("Couldn't read that file — make sure it's a valid .csv, .txt, .xlsx, or .xls file.");
-      setContacts([]);
+      setContacts(null);
     }
   }
 
@@ -127,17 +112,16 @@ export default function NewBulkCallCampaignPage() {
   if (!scheduledCallTime) missingFields.push("Call time");
   if (!resolvedPrompt.trim()) missingFields.push("Call Script");
   if (!selectedTrunkId) missingFields.push("Phone Number");
-  if (contacts.length === 0) missingFields.push("Contact list");
 
   const canSubmit = missingFields.length === 0 && !submitting;
 
-  async function handleCreate() {
+  async function handleSave() {
     if (!canSubmit) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const res = await fetch("/api/campaigns/bulk-call", {
-        method: "POST",
+      const res = await fetch(`/api/campaigns/bulk-call/${id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
@@ -152,46 +136,71 @@ export default function NewBulkCallCampaignPage() {
           sipTrunkId: selectedTrunkId,
           fromNumber: selectedTrunk?.numbers[0] ?? null,
           concurrentCallLimit,
-          contacts,
+          contacts: contacts ?? undefined, // omit entirely to keep the existing contact list
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to create campaign.");
-      router.push("/dashboard/campaigns/bulk-call");
+      if (!res.ok) throw new Error(json.error || "Failed to save changes.");
+      router.push(`/dashboard/campaigns/bulk-call/${id}`);
     } catch (err: any) {
-      setSubmitError(err.message || "Failed to create campaign.");
+      setSubmitError(err.message || "Failed to save changes.");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (loading) {
+    return <p className="py-14 text-center text-sm text-zinc-400 animate-pulse">Loading campaign…</p>;
+  }
+
+  if (loadError || !status) {
+    return (
+      <div className="space-y-4">
+        <Link href="/dashboard/campaigns/bulk-call" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400">
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to campaigns
+        </Link>
+        <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-500">
+          {loadError || "Campaign not found."}
+        </div>
+      </div>
+    );
+  }
+
+  if (status !== "scheduled") {
+    return (
+      <div className="space-y-4">
+        <Link href={`/dashboard/campaigns/bulk-call/${id}`} className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400">
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to campaign
+        </Link>
+        <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p className="text-sm">
+            This campaign can no longer be edited — it&apos;s already <strong>{status.replace("_", " ")}</strong>.
+            Only campaigns that haven&apos;t started calling yet can be changed.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <Link
-          href="/dashboard/campaigns/bulk-call"
+          href={`/dashboard/campaigns/bulk-call/${id}`}
           className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
         >
-          <ArrowLeft className="h-3.5 w-3.5" /> Back to campaigns
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to campaign
         </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight">Create Bulk Call Campaign</h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Set up Priya to call your webinar leads and confirm who&apos;s attending.
-        </p>
+        <h1 className="mt-2 text-2xl font-bold tracking-tight">Edit Campaign</h1>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">Update details before Priya starts calling.</p>
       </div>
 
       {/* Campaign details */}
       <div className="rounded-2xl border border-zinc-200/70 bg-white p-6 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
         <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Campaign Details</h3>
-        <p className="mt-0.5 text-xs text-zinc-400">Name the campaign and pick the doctor and condition for this week.</p>
         <div className="mt-3 space-y-3">
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Knee webinar — Dr. Venkatesh, 20 Jul"
-            className={inputClasses}
-          />
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Campaign name" className={inputClasses} />
           <div className="grid gap-3 sm:grid-cols-2">
             <input
               type="text"
@@ -214,7 +223,6 @@ export default function NewBulkCallCampaignPage() {
       {/* Webinar details */}
       <div className="rounded-2xl border border-zinc-200/70 bg-white p-6 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
         <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Webinar Details</h3>
-        <p className="mt-0.5 text-xs text-zinc-400">Priya confirms these details on the call.</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Webinar date</label>
@@ -238,74 +246,23 @@ export default function NewBulkCallCampaignPage() {
       </div>
 
       {/* Call script */}
-      <div className="rounded-2xl border border-zinc-200/70 bg-white shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
-        <button
-          type="button"
-          onClick={() => setScriptExpanded((v) => !v)}
-          className="flex w-full items-center justify-between gap-4 p-6 text-left"
-        >
-          <div>
-            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Call Script (optional edit)</h3>
-            <p className="mt-0.5 text-xs text-zinc-400">
-              {templateSource === "inbound"
-                ? "No outbound template set — using your inbound prompt as a starting point. Click to customize for this campaign."
-                : "Uses your saved outbound template — click to customize for this campaign."}
-            </p>
-          </div>
-          <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${scriptExpanded ? "rotate-180" : ""}`} />
-        </button>
-        {scriptExpanded && (
-          <div className="border-t border-zinc-100 p-6 pt-4 dark:border-zinc-700">
-            {loadingTemplate ? (
-              <p className="text-xs text-zinc-400">Loading your saved template…</p>
-            ) : (
-              <>
-                {templateSource === "inbound" && (
-                  <div className="mb-3 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <p className="text-xs">
-                      No outbound template set — using inbound prompt as a starting point. Edit as needed for outbound calls.
-                    </p>
-                  </div>
-                )}
-                <textarea
-                  rows={12}
-                  value={resolvedPrompt}
-                  onChange={(e) => {
-                    setScriptDirty(true);
-                    setResolvedPrompt(e.target.value);
-                  }}
-                  className="w-full resize-y rounded-md border border-zinc-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-zinc-900 outline-none transition-colors focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
-                />
-                <p className="mt-1.5 text-[11px] text-zinc-400">
-                  {scriptDirty
-                    ? "Edited for this campaign — no longer updates automatically as Doctor/Condition/Webinar fields change."
-                    : "Updates automatically as you fill in Doctor, Condition, and Webinar details above."}
-                </p>
-              </>
-            )}
-          </div>
-        )}
+      <div className="rounded-2xl border border-zinc-200/70 bg-white p-6 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
+        <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Call Script</h3>
+        <p className="mt-0.5 text-xs text-zinc-400">
+          Editing this only changes what Priya says for this campaign — it doesn&apos;t touch your saved template.
+        </p>
+        <textarea
+          rows={12}
+          value={resolvedPrompt}
+          onChange={(e) => setResolvedPrompt(e.target.value)}
+          className="mt-3 w-full resize-y rounded-md border border-zinc-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-zinc-900 outline-none transition-colors focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+        />
       </div>
 
       {/* Phone number */}
       <div className="rounded-2xl border border-zinc-200/70 bg-white p-6 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
         <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Phone Number</h3>
         <p className="mt-0.5 text-xs text-zinc-400">Select the outbound number to call from.</p>
-
-        {!loadingTrunks && outboundTrunks.length === 0 && (
-          <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p className="text-xs">
-              No outbound trunk is provisioned yet. Set one up from{" "}
-              <Link href="/dashboard/numbers" className="font-medium underline">
-                Phone Numbers
-              </Link>{" "}
-              before creating a campaign.
-            </p>
-          </div>
-        )}
-
         {loadingTrunks ? (
           <p className="mt-3 text-xs text-zinc-400">Loading phone numbers…</p>
         ) : outboundTrunks.length > 0 ? (
@@ -316,19 +273,25 @@ export default function NewBulkCallCampaignPage() {
               </option>
             ))}
           </select>
-        ) : null}
+        ) : (
+          <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p className="text-xs">No outbound trunk is provisioned yet.</p>
+          </div>
+        )}
       </div>
 
       {/* Contact list */}
       <div className="rounded-2xl border border-zinc-200/70 bg-white p-6 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
-        <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Upload Contact List</h3>
+        <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Contact List</h3>
         <p className="mt-0.5 text-xs text-zinc-400">
-          A .csv, .txt, or .xlsx/.xls file with one contact per row — either just a phone number, or &quot;Name,
-          Phone&quot;.
+          {contacts === null
+            ? `Currently ${totalContacts} contact${totalContacts === 1 ? "" : "s"}. Upload a new file to replace the whole list — leave this alone to keep it as-is.`
+            : "Uploading below will replace the entire contact list for this campaign."}
         </p>
         <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 px-4 py-8 text-sm text-zinc-500 transition-colors hover:border-brand-300 hover:bg-brand-50/40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
           <FileUp className="h-4 w-4" />
-          {fileName ? fileName : "Click to choose a file"}
+          {fileName ? fileName : "Click to replace the contact list (optional)"}
           <input
             type="file"
             accept=".csv,.txt,.xlsx,.xls,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
@@ -337,9 +300,9 @@ export default function NewBulkCallCampaignPage() {
           />
         </label>
         {parseError && <p className="mt-2 text-xs text-rose-500">{parseError}</p>}
-        {contacts.length > 0 && (
+        {contacts && contacts.length > 0 && (
           <div className="mt-3 flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-xs font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-400">
-            <Users className="h-3.5 w-3.5" /> {contacts.length} contact{contacts.length === 1 ? "" : "s"} ready to call
+            <Users className="h-3.5 w-3.5" /> Will replace with {contacts.length} contact{contacts.length === 1 ? "" : "s"}
           </div>
         )}
       </div>
@@ -347,34 +310,14 @@ export default function NewBulkCallCampaignPage() {
       {/* Scheduled call */}
       <div className="rounded-2xl border border-zinc-200/70 bg-white p-6 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
         <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Scheduled Call</h3>
-        <p className="mt-0.5 text-xs text-zinc-400">
-          When Priya starts calling this list. Defaults to the webinar date at 4:00 PM — change it for a day-before
-          reminder, an evening webinar, or any other timing.
-        </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Call date</label>
-            <input
-              type="date"
-              value={scheduledCallDate}
-              onChange={(e) => {
-                setScheduleTouched(true);
-                setScheduledCallDate(e.target.value);
-              }}
-              className={inputClasses}
-            />
+            <input type="date" value={scheduledCallDate} onChange={(e) => setScheduledCallDate(e.target.value)} className={inputClasses} />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Call time</label>
-            <input
-              type="time"
-              value={scheduledCallTime}
-              onChange={(e) => {
-                setScheduleTouched(true);
-                setScheduledCallTime(e.target.value);
-              }}
-              className={inputClasses}
-            />
+            <input type="time" value={scheduledCallTime} onChange={(e) => setScheduledCallTime(e.target.value)} className={inputClasses} />
           </div>
         </div>
       </div>
@@ -382,7 +325,6 @@ export default function NewBulkCallCampaignPage() {
       {/* Concurrency */}
       <div className="rounded-2xl border border-zinc-200/70 bg-white p-6 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
         <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Concurrent Call Settings</h3>
-        <p className="mt-0.5 text-xs text-zinc-400">How many calls can run at the same time.</p>
         <input
           type="number"
           min={1}
@@ -405,18 +347,18 @@ export default function NewBulkCallCampaignPage() {
         )}
         <div className="flex items-center justify-end gap-3">
           <Link
-            href="/dashboard/campaigns/bulk-call"
+            href={`/dashboard/campaigns/bulk-call/${id}`}
             className="rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-700"
           >
             Cancel
           </Link>
           <button
-            onClick={handleCreate}
+            onClick={handleSave}
             disabled={!canSubmit}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            Create Campaign
+            Save Changes
           </button>
         </div>
       </div>

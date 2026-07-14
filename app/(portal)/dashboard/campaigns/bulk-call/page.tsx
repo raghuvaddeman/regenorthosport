@@ -8,6 +8,7 @@ import {
   Inbox,
   Loader2,
   Pause,
+  Pencil,
   Phone,
   Play,
   Plus,
@@ -261,10 +262,21 @@ export default function BulkCallCampaignsPage() {
                     </td>
                     <td className="px-6 py-3.5">
                       <div className="flex items-center justify-end gap-1.5">
+                        {c.status === "scheduled" && (
+                          <Link
+                            href={`/dashboard/campaigns/bulk-call/${c.id}/edit`}
+                            title="Edit campaign"
+                            aria-label="Edit campaign"
+                            className="grid h-8 w-8 place-items-center rounded-full border border-zinc-200 text-zinc-400 transition-colors hover:bg-zinc-50 hover:text-zinc-600 dark:border-zinc-600 dark:hover:bg-zinc-700"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Link>
+                        )}
                         {c.status === "paused" && (
                           <button
                             onClick={() => updateStatus(c, "in_progress")}
                             disabled={actionPendingId === c.id}
+                            title="Resume campaign"
                             className="grid h-8 w-8 place-items-center rounded-full border border-brand-200 text-brand-500 transition-colors hover:bg-brand-50 disabled:opacity-40 dark:border-brand-500/30 dark:text-brand-400 dark:hover:bg-brand-500/10"
                             aria-label="Resume campaign"
                           >
@@ -275,6 +287,7 @@ export default function BulkCallCampaignsPage() {
                           <button
                             onClick={() => updateStatus(c, "paused")}
                             disabled={actionPendingId === c.id}
+                            title="Pause campaign"
                             className="grid h-8 w-8 place-items-center rounded-full border border-amber-200 text-amber-500 transition-colors hover:bg-amber-50 disabled:opacity-40 dark:border-amber-500/30 dark:text-amber-400 dark:hover:bg-amber-500/10"
                             aria-label="Pause campaign"
                           >
@@ -285,6 +298,7 @@ export default function BulkCallCampaignsPage() {
                           <button
                             onClick={() => updateStatus(c, "cancelled")}
                             disabled={actionPendingId === c.id}
+                            title="Cancel campaign"
                             className="grid h-8 w-8 place-items-center rounded-full border border-zinc-200 text-zinc-400 transition-colors hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-600 dark:hover:bg-zinc-700"
                             aria-label="Cancel campaign"
                           >
@@ -295,6 +309,7 @@ export default function BulkCallCampaignsPage() {
                           <button
                             onClick={() => deleteCampaign(c)}
                             disabled={actionPendingId === c.id}
+                            title="Delete campaign"
                             className="grid h-8 w-8 place-items-center rounded-full border border-zinc-200 text-zinc-400 transition-colors hover:bg-rose-50 hover:text-rose-500 disabled:opacity-40 dark:border-zinc-600 dark:hover:bg-rose-500/10"
                             aria-label="Delete campaign"
                           >

@@ -10,6 +10,7 @@ import {
   ExternalLink,
   MessageSquareText,
   Pause,
+  Pencil,
   Phone,
   Play,
   Stethoscope,
@@ -190,6 +191,14 @@ export default function BulkCallCampaignDetailPage({ params }: { params: Promise
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {campaign.status === "scheduled" && (
+              <Link
+                href={`/dashboard/campaigns/bulk-call/${campaign.id}/edit`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-3.5 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-700"
+              >
+                <Pencil className="h-3.5 w-3.5" /> Edit
+              </Link>
+            )}
             {campaign.status === "in_progress" && (
               <button
                 onClick={() => updateStatus("paused")}
