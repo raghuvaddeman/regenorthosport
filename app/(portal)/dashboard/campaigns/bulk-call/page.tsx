@@ -15,48 +15,63 @@ import {
   Trash2,
 } from "lucide-react";
 
-type CampaignStatus = "draft" | "running" | "paused" | "completed" | "cancelled";
+type CampaignStatus = "draft" | "scheduled" | "in_progress" | "paused" | "completed" | "cancelled";
 
 type Campaign = {
   id: string;
   name: string;
+  doctorName: string;
+  condition: string;
+  webinarDate: string;
+  scheduledCallDate: string;
+  scheduledCallTime: string;
   status: CampaignStatus;
-  fromSipTrunkId: string;
   fromNumber: string | null;
   concurrentCallLimit: number;
   totalContacts: number;
   createdAt: string;
-  counts: { pending: number; calling: number; completed: number; failed: number };
+  counts: { pending: number; calling: number; yes: number; no: number; noAnswer: number; unclear: number };
 };
 
 const STATUS_STYLES: Record<CampaignStatus, string> = {
   draft: "bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300",
-  running: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400",
+  scheduled: "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400",
+  in_progress: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400",
   paused: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400",
-  completed: "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400",
+  completed: "bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400",
   cancelled: "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400",
+};
+
+const STATUS_LABELS: Record<CampaignStatus, string> = {
+  draft: "Draft",
+  scheduled: "Scheduled",
+  in_progress: "In progress",
+  paused: "Paused",
+  completed: "Completed",
+  cancelled: "Cancelled",
 };
 
 function StatusBadge({ status }: { status: CampaignStatus }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium capitalize ${STATUS_STYLES[status]}`}>
-      {status === "running" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />}
-      {status}
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLES[status]}`}>
+      {status === "in_progress" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />}
+      {STATUS_LABELS[status]}
     </span>
   );
 }
 
 function ProgressBar({ campaign }: { campaign: Campaign }) {
-  const done = campaign.counts.completed + campaign.counts.failed;
+  const { yes, no, noAnswer, unclear } = campaign.counts;
+  const resolved = yes + no + noAnswer + unclear;
   const total = campaign.totalContacts || 1;
-  const pct = Math.min(100, Math.round((done / total) * 100));
+  const pct = Math.min(100, Math.round((resolved / total) * 100));
   return (
     <div className="w-40">
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-700">
         <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${pct}%` }} />
       </div>
       <p className="mt-1 text-[11px] tabular-nums text-zinc-400">
-        {done} / {campaign.totalContacts} · {pct}%
+        {resolved} / {campaign.totalContacts} · {pct}%
       </p>
     </div>
   );
@@ -88,9 +103,10 @@ export default function BulkCallCampaignsPage() {
     load();
   }, [load]);
 
-  // Poll while anything is actively running so progress bars move without a manual refresh.
+  // Poll while anything is scheduled/active so progress bars and the
+  // scheduled->in_progress transition show up without a manual refresh.
   useEffect(() => {
-    if (!campaigns.some((c) => c.status === "running")) return;
+    if (!campaigns.some((c) => c.status === "in_progress" || c.status === "scheduled")) return;
     const id = setInterval(load, 5000);
     return () => clearInterval(id);
   }, [campaigns, load]);
@@ -131,7 +147,8 @@ export default function BulkCallCampaignsPage() {
   const filtered = useMemo(
     () =>
       campaigns.filter((c) => {
-        const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
+        const matchesSearch =
+          c.name.toLowerCase().includes(search.toLowerCase()) || c.doctorName.toLowerCase().includes(search.toLowerCase());
         const matchesStatus = statusFilter === "all" || c.status === statusFilter;
         return matchesSearch && matchesStatus;
       }),
@@ -143,7 +160,7 @@ export default function BulkCallCampaignsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Bulk Call Campaigns</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">Manage and monitor your bulk call campaigns.</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">Weekly webinar RSVP calls, managed and tracked here.</p>
         </div>
         <Link
           href="/dashboard/campaigns/bulk-call/new"
@@ -162,7 +179,7 @@ export default function BulkCallCampaignsPage() {
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
           <input
             type="text"
-            placeholder="Search by name..."
+            placeholder="Search by name or doctor..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-md border border-zinc-200 bg-white pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-zinc-600 dark:bg-zinc-800"
@@ -174,8 +191,8 @@ export default function BulkCallCampaignsPage() {
           className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-zinc-600 dark:bg-zinc-800"
         >
           <option value="all">All statuses</option>
-          <option value="draft">Draft</option>
-          <option value="running">Running</option>
+          <option value="scheduled">Scheduled</option>
+          <option value="in_progress">In progress</option>
           <option value="paused">Paused</option>
           <option value="completed">Completed</option>
           <option value="cancelled">Cancelled</option>
@@ -187,26 +204,25 @@ export default function BulkCallCampaignsPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-zinc-100 dark:border-zinc-700">
-                <th className="px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Name</th>
+                <th className="px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Campaign</th>
                 <th className="px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Status</th>
-                <th className="px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">From Number</th>
-                <th className="px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Progress</th>
-                <th className="px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Concurrent Calls</th>
-                <th className="px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Created</th>
+                <th className="px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Scheduled Call</th>
+                <th className="px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">RSVP Progress</th>
+                <th className="px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Yes / No</th>
                 <th className="px-6 py-3 text-right text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-700/70">
               {loading && (
                 <tr>
-                  <td colSpan={7} className="py-14 text-center text-sm text-zinc-400 animate-pulse">
+                  <td colSpan={6} className="py-14 text-center text-sm text-zinc-400 animate-pulse">
                     Loading campaigns…
                   </td>
                 </tr>
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-14 text-center">
+                  <td colSpan={6} className="py-14 text-center">
                     <Inbox className="mx-auto h-8 w-8 text-zinc-300 dark:text-zinc-600" />
                     <p className="mt-3 text-sm font-medium text-zinc-500 dark:text-zinc-400">No bulk call campaigns found.</p>
                     <p className="mt-1 text-xs text-zinc-400">Try creating a new campaign to get started.</p>
@@ -216,35 +232,46 @@ export default function BulkCallCampaignsPage() {
               {!loading &&
                 filtered.map((c) => (
                   <tr key={c.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-700/40">
-                    <td className="px-6 py-3.5 font-medium text-zinc-800 dark:text-zinc-100">{c.name}</td>
+                    <td className="px-6 py-3.5">
+                      <Link href={`/dashboard/campaigns/bulk-call/${c.id}`} className="font-medium text-zinc-800 hover:underline dark:text-zinc-100">
+                        {c.name}
+                      </Link>
+                      <p className="text-xs text-zinc-400">
+                        {c.doctorName} · {c.condition}
+                      </p>
+                    </td>
                     <td className="px-6 py-3.5">
                       <StatusBadge status={c.status} />
                     </td>
-                    <td className="px-6 py-3.5 font-mono text-xs text-zinc-500 dark:text-zinc-400">
-                      {c.fromNumber || "—"}
+                    <td className="px-6 py-3.5 whitespace-nowrap font-mono text-xs text-zinc-500 dark:text-zinc-400">
+                      {new Date(`${c.scheduledCallDate}T${c.scheduledCallTime}`).toLocaleString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </td>
                     <td className="px-6 py-3.5">
                       <ProgressBar campaign={c} />
                     </td>
-                    <td className="px-6 py-3.5 font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
-                      {c.counts.calling} / {c.concurrentCallLimit}
-                    </td>
-                    <td className="px-6 py-3.5 whitespace-nowrap font-mono text-xs text-zinc-500 dark:text-zinc-400">
-                      {new Date(c.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                    <td className="px-6 py-3.5">
+                      <span className="font-mono text-xs tabular-nums text-emerald-600 dark:text-emerald-400">{c.counts.yes} yes</span>
+                      <span className="mx-1 text-zinc-300 dark:text-zinc-600">/</span>
+                      <span className="font-mono text-xs tabular-nums text-rose-600 dark:text-rose-400">{c.counts.no} no</span>
                     </td>
                     <td className="px-6 py-3.5">
                       <div className="flex items-center justify-end gap-1.5">
-                        {(c.status === "draft" || c.status === "paused") && (
+                        {c.status === "paused" && (
                           <button
-                            onClick={() => updateStatus(c, "running")}
+                            onClick={() => updateStatus(c, "in_progress")}
                             disabled={actionPendingId === c.id}
                             className="grid h-8 w-8 place-items-center rounded-full border border-brand-200 text-brand-500 transition-colors hover:bg-brand-50 disabled:opacity-40 dark:border-brand-500/30 dark:text-brand-400 dark:hover:bg-brand-500/10"
-                            aria-label="Start campaign"
+                            aria-label="Resume campaign"
                           >
                             {actionPendingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 pl-px" />}
                           </button>
                         )}
-                        {c.status === "running" && (
+                        {c.status === "in_progress" && (
                           <button
                             onClick={() => updateStatus(c, "paused")}
                             disabled={actionPendingId === c.id}
@@ -254,7 +281,7 @@ export default function BulkCallCampaignsPage() {
                             <Pause className="h-3.5 w-3.5" />
                           </button>
                         )}
-                        {(c.status === "draft" || c.status === "running" || c.status === "paused") && (
+                        {(c.status === "scheduled" || c.status === "in_progress" || c.status === "paused") && (
                           <button
                             onClick={() => updateStatus(c, "cancelled")}
                             disabled={actionPendingId === c.id}
@@ -264,7 +291,7 @@ export default function BulkCallCampaignsPage() {
                             <Ban className="h-3.5 w-3.5" />
                           </button>
                         )}
-                        {(c.status === "completed" || c.status === "cancelled" || c.status === "draft") && (
+                        {(c.status === "completed" || c.status === "cancelled") && (
                           <button
                             onClick={() => deleteCampaign(c)}
                             disabled={actionPendingId === c.id}
@@ -284,7 +311,8 @@ export default function BulkCallCampaignsPage() {
       </div>
 
       <p className="flex items-center gap-1.5 text-xs text-zinc-400">
-        <Phone className="h-3 w-3" /> Calls dial out through your configured Vobiz outbound trunk, respecting each campaign&apos;s concurrent call limit.
+        <Phone className="h-3 w-3" /> Calls dial out automatically at the scheduled time, through your configured
+        Vobiz outbound trunk, respecting each campaign&apos;s concurrent call limit.
       </p>
     </div>
   );

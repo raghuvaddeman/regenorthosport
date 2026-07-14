@@ -867,7 +867,10 @@ export default function AgentSettingsPage() {
 
           <SectionCard
             title="Outbound / Bulk Call System Prompt"
-            description="Used when Priya makes outbound bulk calls. Falls back to the inbound prompt if left empty."
+            description={
+              'Used as the reusable template for weekly webinar RSVP calls. Supports placeholders: ' +
+              '{{doctor_name}}, {{condition}}, {{webinar_date}}, {{webinar_time}}. Falls back to the inbound prompt if left empty.'
+            }
           >
             <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">
               <Sparkles className="h-3.5 w-3.5" /> Prompt canvas

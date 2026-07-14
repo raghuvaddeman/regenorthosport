@@ -5,6 +5,7 @@ import {
   cli,
   voice,
   metrics,
+  tool,
   AgentSessionEventTypes,
   type ChatMessage,
   type JobContext,
@@ -18,6 +19,7 @@ import * as silero from '@livekit/agents-plugin-silero';
 import { EgressClient } from 'livekit-server-sdk';
 import { EncodedFileOutput, EncodedFileType, S3Upload } from '@livekit/protocol';
 import { GoogleGenAI } from '@google/genai';
+import { z } from 'zod';
 import type { CallUsage } from '../lib/pricing/call-cost';
 
 const FALLBACK_INSTRUCTIONS =
@@ -49,6 +51,81 @@ async function fetchAgentSettings(): Promise<{
     console.warn('Agent settings fetch failed:', err.message);
     return null;
   }
+}
+
+/**
+ * Bulk-call rooms are named `bulk_${campaignId}_${contactId}` by
+ * app/api/campaigns/bulk-call/dispatch — that's the only signal this worker
+ * has that a job is an agent-initiated outbound campaign call, and how it
+ * recovers which campaign/contact the call belongs to.
+ */
+function parseBulkCallRoomName(roomName: string): { campaignId: string; contactId: string } | null {
+  const match = /^bulk_([0-9a-f-]+)_([0-9a-f-]+)$/i.exec(roomName);
+  if (!match) return null;
+  return { campaignId: match[1], contactId: match[2] };
+}
+
+/** Fetches a bulk-call campaign's locked-in, placeholder-resolved outbound script. */
+async function fetchCampaignResolvedPrompt(campaignId: string): Promise<string | null> {
+  const appUrl = process.env.APP_URL;
+  const secret = process.env.INTERNAL_SECRET_KEY;
+  if (!appUrl || !secret) return null;
+
+  try {
+    const res = await fetch(`${appUrl}/api/campaigns/bulk-call/${campaignId}`, {
+      headers: { 'x-internal-secret': secret },
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.campaign?.resolvedPrompt ?? null;
+  } catch (err: any) {
+    console.warn('Bulk campaign prompt fetch failed:', err.message);
+    return null;
+  }
+}
+
+/**
+ * The structured-capture tool for webinar-RSVP bulk calls: the agent calls
+ * this once it has a clear answer, instead of us trying to parse the
+ * transcript afterwards. Posts straight to the contact's row.
+ */
+function buildRsvpTool(contactId: string) {
+  return tool({
+    name: 'record_rsvp',
+    description:
+      "Records the lead's RSVP decision for the webinar, and their reason if declining. " +
+      'Call this exactly once, right before ending the call, as soon as you have a clear answer.',
+    parameters: z.object({
+      rsvpStatus: z
+        .enum(['yes', 'no', 'unclear'])
+        .describe('Whether the lead confirmed they will attend the webinar. Use "unclear" if they never gave a clear answer.'),
+      feedbackNote: z
+        .string()
+        .optional()
+        .describe('A brief reason for declining, in the lead\'s own words. Only include this when rsvpStatus is "no".'),
+    }),
+    execute: async ({ rsvpStatus, feedbackNote }) => {
+      const appUrl = process.env.APP_URL;
+      const secret = process.env.INTERNAL_SECRET_KEY;
+      if (!appUrl || !secret) {
+        console.warn('record_rsvp: APP_URL or INTERNAL_SECRET_KEY not set, could not persist RSVP.');
+        return { recorded: false };
+      }
+      try {
+        const res = await fetch(`${appUrl}/api/campaigns/bulk-call/contacts/${contactId}/rsvp`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'x-internal-secret': secret },
+          body: JSON.stringify({ rsvpStatus, feedbackNote }),
+        });
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        console.log(`[RSVP] Recorded rsvpStatus=${rsvpStatus} for contact ${contactId}`);
+        return { recorded: true };
+      } catch (err: any) {
+        console.warn('record_rsvp: failed to persist RSVP:', err.message);
+        return { recorded: false };
+      }
+    },
+  });
 }
 
 // Pinned (not the floating gemini-flash-lite-latest alias) after A/B testing showed
@@ -508,13 +585,13 @@ export default defineAgent({
     const callInfo = { customerPhone: '', egressId: '' };
     const egressClient = getEgressClient();
 
-    // Bulk-call rooms are named `bulk_${campaignId}_${contactId}` by
-    // app/api/campaigns/bulk-call/dispatch — that's the only signal this
-    // worker has that a job is an agent-initiated outbound call rather than
-    // a caller-initiated inbound one.
-    const isOutboundBulkCall = (ctx.room.name ?? '').startsWith('bulk_');
+    const bulkCallInfo = parseBulkCallRoomName(ctx.room.name ?? '');
 
-    const [settings, models] = await Promise.all([fetchAgentSettings(), fetchProviderModels()]);
+    const [settings, models, campaignResolvedPrompt] = await Promise.all([
+      fetchAgentSettings(),
+      fetchProviderModels(),
+      bulkCallInfo ? fetchCampaignResolvedPrompt(bulkCallInfo.campaignId) : Promise.resolve(null),
+    ]);
     const geminiModel = LLM_MODEL_OVERRIDE ?? models.geminiModel;
 
     const session = new voice.AgentSession({
@@ -545,11 +622,18 @@ export default defineAgent({
       egressClient,
     });
 
-    const instructions = isOutboundBulkCall
-      ? settings?.outboundSystemPrompt || settings?.systemPrompt || FALLBACK_INSTRUCTIONS
+    // Resolution order for bulk calls: the campaign's own locked-in script
+    // (placeholders already filled in at creation time) beats the tenant-wide
+    // outbound prompt, which beats the inbound prompt, which beats the
+    // hardcoded fallback. Inbound calls are unaffected.
+    const instructions = bulkCallInfo
+      ? campaignResolvedPrompt || settings?.outboundSystemPrompt || settings?.systemPrompt || FALLBACK_INSTRUCTIONS
       : (settings?.systemPrompt ?? FALLBACK_INSTRUCTIONS);
 
-    const agent = new voice.Agent({ instructions });
+    const agent = new voice.Agent({
+      instructions,
+      tools: bulkCallInfo ? [buildRsvpTool(bulkCallInfo.contactId)] : undefined,
+    });
 
     await session.start({ agent, room: ctx.room });
 
