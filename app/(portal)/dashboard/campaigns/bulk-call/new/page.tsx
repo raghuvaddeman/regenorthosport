@@ -247,9 +247,11 @@ export default function NewBulkCallCampaignPage() {
           <div>
             <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Call Script (optional edit)</h3>
             <p className="mt-0.5 text-xs text-zinc-400">
-              {templateSource === "inbound"
-                ? "No outbound template set — using your inbound prompt as a starting point. Click to customize for this campaign."
-                : "Uses your saved outbound template — click to customize for this campaign."}
+              {templateSource === null
+                ? "Loading your saved template…"
+                : templateSource === "inbound"
+                  ? "No outbound template set — using your inbound prompt as a starting point. Click to customize for this campaign."
+                  : "Uses your saved outbound template — click to customize for this campaign."}
             </p>
           </div>
           <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${scriptExpanded ? "rotate-180" : ""}`} />
