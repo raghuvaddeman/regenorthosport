@@ -48,8 +48,21 @@ export function parseContactsXlsx(buffer: ArrayBuffer): ParsedContact[] {
   const workbook = XLSX.read(buffer, { type: "array" });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
   if (!firstSheet) return [];
-  const rows: unknown[][] = XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false, defval: "" });
-  return contactsFromRows(rows.map((row) => row.map((cell) => String(cell ?? ""))));
+  // raw: true — a phone number typed into Excel without any text formatting
+  // is stored as a plain number, and once it's long enough Excel *displays*
+  // it in scientific notation (e.g. 9.19014E+11). Trusting that displayed
+  // text (raw: false) silently truncates the number to ~6 significant
+  // digits. Reading the raw numeric value and formatting it as a plain
+  // integer avoids that loss.
+  const rows: unknown[][] = XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: true, defval: "" });
+  return contactsFromRows(
+    rows.map((row) =>
+      row.map((cell) => {
+        if (typeof cell === "number") return Number.isInteger(cell) ? cell.toFixed(0) : String(cell);
+        return String(cell ?? "");
+      })
+    )
+  );
 }
 
 /** Reads a File (from a file input) and returns parsed contacts, picking the
