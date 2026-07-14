@@ -40,17 +40,15 @@ export default async function LoginPage() {
               borderRadius: "0.5rem",
             },
             options: {
-              // Clerk's own Dashboard-configured logo, rendered inside the card — was
-              // rendering at its default (tiny) size, so it's explicitly re-sized below.
-              logoImageUrl: "/logo.png",
-              logoPlacement: "inside",
+              // The brand block above the card already carries the logo —
+              // Clerk's own Dashboard-configured logo inside the card would
+              // just duplicate it, so it's turned off here.
+              logoPlacement: "none",
             },
             elements: {
               card: "shadow-sm border border-zinc-200 dark:border-zinc-600",
               headerTitle: "hidden", // brand block above replaces it
               headerSubtitle: "hidden",
-              logoBox: "mb-2",
-              logoImage: "h-10 w-auto",
               formButtonPrimary: "text-sm normal-case",
             },
           }}
