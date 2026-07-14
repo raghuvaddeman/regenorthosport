@@ -149,17 +149,19 @@ export default function NewBulkCallCampaignPage() {
   }
 
   const selectedTrunk = outboundTrunks.find((t) => t.sipTrunkId === selectedTrunkId);
-  const canSubmit =
-    name.trim() &&
-    doctorName.trim() &&
-    webinarDate &&
-    webinarTime &&
-    scheduledCallDate &&
-    scheduledCallTime &&
-    resolvedPrompt.trim() &&
-    selectedTrunkId &&
-    contacts.length > 0 &&
-    !submitting;
+
+  const missingFields: string[] = [];
+  if (!name.trim()) missingFields.push("Campaign name");
+  if (!doctorName.trim()) missingFields.push("Doctor name");
+  if (!webinarDate) missingFields.push("Webinar date");
+  if (!webinarTime) missingFields.push("Webinar time");
+  if (!scheduledCallDate) missingFields.push("Call date");
+  if (!scheduledCallTime) missingFields.push("Call time");
+  if (!resolvedPrompt.trim()) missingFields.push("Call Script");
+  if (!selectedTrunkId) missingFields.push("Phone Number");
+  if (contacts.length === 0) missingFields.push("Contact list");
+
+  const canSubmit = missingFields.length === 0 && !submitting;
 
   async function handleCreate() {
     if (!canSubmit) return;
@@ -421,21 +423,28 @@ export default function NewBulkCallCampaignPage() {
         <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-500">{submitError}</div>
       )}
 
-      <div className="flex items-center justify-end gap-3">
-        <Link
-          href="/dashboard/campaigns/bulk-call"
-          className="rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-700"
-        >
-          Cancel
-        </Link>
-        <button
-          onClick={handleCreate}
-          disabled={!canSubmit}
-          className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-          Create Campaign
-        </button>
+      <div className="flex flex-col items-end gap-2">
+        {missingFields.length > 0 && (
+          <p className="text-xs text-zinc-400">
+            Still needed: <span className="font-medium text-zinc-500 dark:text-zinc-300">{missingFields.join(", ")}</span>
+          </p>
+        )}
+        <div className="flex items-center justify-end gap-3">
+          <Link
+            href="/dashboard/campaigns/bulk-call"
+            className="rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-700"
+          >
+            Cancel
+          </Link>
+          <button
+            onClick={handleCreate}
+            disabled={!canSubmit}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            Create Campaign
+          </button>
+        </div>
       </div>
     </div>
   );
