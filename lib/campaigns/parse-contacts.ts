@@ -14,6 +14,16 @@ function looksLikePhone(value: string): boolean {
   return digits.length >= 7 && digits.length <= 15;
 }
 
+/** The dialer (lib/telephony/livekit-sip.ts) expects E.164 — a leading "+"
+    followed by country code and number, same convention as the manual
+    outbound-call field in Agent Settings. Strips any spaces/dashes/parens
+    and adds the "+" if the uploaded sheet didn't include one (it assumes
+    whatever digits are present already include the country code — it
+    doesn't try to guess a missing one). */
+function normalizePhone(raw: string): string {
+  return `+${raw.replace(/[^\d]/g, "")}`;
+}
+
 /** Shared row logic for both CSV lines and spreadsheet rows: whichever cell
     looks like a phone number wins, the rest becomes the name. */
 function contactsFromRows(rows: string[][]): ParsedContact[] {
@@ -23,12 +33,12 @@ function contactsFromRows(rows: string[][]): ParsedContact[] {
     if (cells.length === 0) continue;
     if (cells.length === 1 && !looksLikePhone(cells[0])) continue; // likely a header row
     if (cells.length === 1) {
-      contacts.push({ name: null, phone: cells[0] });
+      contacts.push({ name: null, phone: normalizePhone(cells[0]) });
       continue;
     }
     const phoneIdx = cells.findIndex(looksLikePhone);
     if (phoneIdx === -1) continue; // header row like "name,phone"
-    const phone = cells[phoneIdx];
+    const phone = normalizePhone(cells[phoneIdx]);
     const name = cells.filter((_, i) => i !== phoneIdx).join(" ").trim() || null;
     contacts.push({ name, phone });
   }
