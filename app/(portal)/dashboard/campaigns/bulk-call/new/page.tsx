@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, ChevronDown, FileUp, Loader2, Users } from "lucide-react";
+import * as XLSX from "xlsx";
 import { CONDITIONS, resolvePromptTemplate, type Condition } from "@/lib/campaigns/prompt-template";
 
 type OutboundTrunkOption = { sipTrunkId: string; name: string; numbers: string[] };
@@ -20,21 +21,18 @@ function looksLikePhone(value: string): boolean {
   return digits.length >= 7 && digits.length <= 15;
 }
 
-function parseContactsCsv(text: string): ParsedContact[] {
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-
+/** Shared row logic for both CSV lines and spreadsheet rows: whichever cell
+    looks like a phone number wins, the rest becomes the name. */
+function contactsFromRows(rows: string[][]): ParsedContact[] {
   const contacts: ParsedContact[] = [];
-  for (const line of lines) {
-    const cells = line.split(",").map((c) => c.trim());
+  for (const row of rows) {
+    const cells = row.map((c) => c.trim()).filter((c) => c.length > 0);
+    if (cells.length === 0) continue;
     if (cells.length === 1 && !looksLikePhone(cells[0])) continue; // likely a header row
     if (cells.length === 1) {
       contacts.push({ name: null, phone: cells[0] });
       continue;
     }
-    // Two+ columns: whichever cell looks like a phone number wins; the rest becomes the name.
     const phoneIdx = cells.findIndex(looksLikePhone);
     if (phoneIdx === -1) continue; // header row like "name,phone"
     const phone = cells[phoneIdx];
@@ -42,6 +40,23 @@ function parseContactsCsv(text: string): ParsedContact[] {
     contacts.push({ name, phone });
   }
   return contacts;
+}
+
+function parseContactsCsv(text: string): ParsedContact[] {
+  const rows = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => line.split(","));
+  return contactsFromRows(rows);
+}
+
+function parseContactsXlsx(buffer: ArrayBuffer): ParsedContact[] {
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!firstSheet) return [];
+  const rows: unknown[][] = XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false, defval: "" });
+  return contactsFromRows(rows.map((row) => row.map((cell) => String(cell ?? ""))));
 }
 
 export default function NewBulkCallCampaignPage() {
@@ -133,10 +148,19 @@ export default function NewBulkCallCampaignPage() {
     if (!file) return;
     setFileName(file.name);
     setParseError(null);
+    const isSpreadsheet = /\.xlsx?$/i.test(file.name);
     const reader = new FileReader();
     reader.onload = () => {
-      const text = String(reader.result ?? "");
-      const parsed = parseContactsCsv(text);
+      let parsed: ParsedContact[];
+      try {
+        parsed = isSpreadsheet
+          ? parseContactsXlsx(reader.result as ArrayBuffer)
+          : parseContactsCsv(String(reader.result ?? ""));
+      } catch {
+        setParseError("Couldn't read that spreadsheet — make sure it's a valid .xlsx or .xls file.");
+        setContacts([]);
+        return;
+      }
       if (parsed.length === 0) {
         setParseError("Couldn't find any valid phone numbers in that file.");
         setContacts([]);
@@ -145,7 +169,8 @@ export default function NewBulkCallCampaignPage() {
       setContacts(parsed);
     };
     reader.onerror = () => setParseError("Couldn't read that file.");
-    reader.readAsText(file);
+    if (isSpreadsheet) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file);
   }
 
   const selectedTrunk = outboundTrunks.find((t) => t.sipTrunkId === selectedTrunkId);
@@ -355,12 +380,18 @@ export default function NewBulkCallCampaignPage() {
       <div className="rounded-2xl border border-zinc-200/70 bg-white p-6 shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
         <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Upload Contact List</h3>
         <p className="mt-0.5 text-xs text-zinc-400">
-          A .csv or .txt file with one contact per line — either just a phone number, or &quot;Name, Phone&quot;.
+          A .csv, .txt, or .xlsx/.xls file with one contact per row — either just a phone number, or &quot;Name,
+          Phone&quot;.
         </p>
         <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 px-4 py-8 text-sm text-zinc-500 transition-colors hover:border-brand-300 hover:bg-brand-50/40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
           <FileUp className="h-4 w-4" />
           {fileName ? fileName : "Click to choose a file"}
-          <input type="file" accept=".csv,.txt,text/csv,text/plain" className="hidden" onChange={handleFile} />
+          <input
+            type="file"
+            accept=".csv,.txt,.xlsx,.xls,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+            className="hidden"
+            onChange={handleFile}
+          />
         </label>
         {parseError && <p className="mt-2 text-xs text-rose-500">{parseError}</p>}
         {contacts.length > 0 && (

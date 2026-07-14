@@ -14,12 +14,12 @@
   "dependencies": {
     "@clerk/backend": "^3.10.0",
     "@clerk/nextjs": "^7.5.12",
+    "@google/genai": "^1.52.0",
     "@livekit/agents": "^1.5.0",
     "@livekit/agents-plugin-google": "^1.5.0",
     "@livekit/agents-plugin-sarvam": "^1.5.0",
     "@livekit/agents-plugin-silero": "^1.5.0",
     "@livekit/protocol": "^1.49.0",
-    "@google/genai": "^1.52.0",
     "@supabase/supabase-js": "^2.110.0",
     "dotenv": "^17.4.2",
     "livekit-server-sdk": "^2.17.0",
@@ -27,6 +27,7 @@
     "next": "16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.4.3"
   },
   "devDependencies": {
