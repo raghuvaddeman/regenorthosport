@@ -378,7 +378,7 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("agent_settings")
-      .select("agent_name, welcome_message, system_prompt")
+      .select("agent_name, welcome_message, system_prompt, outbound_system_prompt")
       .eq("client_id", clientId)
       .maybeSingle();
 
@@ -390,6 +390,10 @@ export async function GET(request: NextRequest) {
         agentName: data?.agent_name ?? DEFAULTS.agentName,
         welcomeMessage: data?.welcome_message ?? DEFAULTS.welcomeMessage,
         systemPrompt: data?.system_prompt ?? DEFAULTS.systemPrompt,
+        // Empty (not defaulted) on purpose — an empty outbound prompt means
+        // "fall back to the inbound prompt", decided where the call actually
+        // happens (agent/worker.ts), not baked in here.
+        outboundSystemPrompt: data?.outbound_system_prompt ?? "",
       },
     });
   } catch (error: any) {
@@ -409,7 +413,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { agentName, welcomeMessage, systemPrompt } = body;
+    const { agentName, welcomeMessage, systemPrompt, outboundSystemPrompt } = body;
 
     if (
       typeof agentName !== "string" ||
@@ -425,6 +429,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Optional — an empty/omitted outbound prompt means "fall back to the inbound one".
+    if (outboundSystemPrompt !== undefined && typeof outboundSystemPrompt !== "string") {
+      return NextResponse.json(
+        { success: false, error: "outboundSystemPrompt must be a string." },
+        { status: 400 }
+      );
+    }
+
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("agent_settings").upsert(
       {
@@ -432,6 +444,7 @@ export async function POST(request: NextRequest) {
         agent_name: agentName,
         welcome_message: welcomeMessage,
         system_prompt: systemPrompt,
+        outbound_system_prompt: outboundSystemPrompt?.trim() || null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "client_id" }

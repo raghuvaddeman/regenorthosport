@@ -25,7 +25,11 @@ const FALLBACK_INSTRUCTIONS =
   'Keep responses brief and conversational, ask clarifying questions when needed, and be polite at all times.';
 
 /** Fetches the persisted agent persona (system prompt + welcome message) from the dashboard. */
-async function fetchAgentSettings(): Promise<{ welcomeMessage: string; systemPrompt: string } | null> {
+async function fetchAgentSettings(): Promise<{
+  welcomeMessage: string;
+  systemPrompt: string;
+  outboundSystemPrompt: string;
+} | null> {
   const appUrl = process.env.APP_URL;
   const secret = process.env.INTERNAL_SECRET_KEY;
   const clientId = process.env.AGENT_CLIENT_ID;
@@ -504,6 +508,12 @@ export default defineAgent({
     const callInfo = { customerPhone: '', egressId: '' };
     const egressClient = getEgressClient();
 
+    // Bulk-call rooms are named `bulk_${campaignId}_${contactId}` by
+    // app/api/campaigns/bulk-call/dispatch — that's the only signal this
+    // worker has that a job is an agent-initiated outbound call rather than
+    // a caller-initiated inbound one.
+    const isOutboundBulkCall = (ctx.room.name ?? '').startsWith('bulk_');
+
     const [settings, models] = await Promise.all([fetchAgentSettings(), fetchProviderModels()]);
     const geminiModel = LLM_MODEL_OVERRIDE ?? models.geminiModel;
 
@@ -535,9 +545,11 @@ export default defineAgent({
       egressClient,
     });
 
-    const agent = new voice.Agent({
-      instructions: settings?.systemPrompt ?? FALLBACK_INSTRUCTIONS,
-    });
+    const instructions = isOutboundBulkCall
+      ? settings?.outboundSystemPrompt || settings?.systemPrompt || FALLBACK_INSTRUCTIONS
+      : (settings?.systemPrompt ?? FALLBACK_INSTRUCTIONS);
+
+    const agent = new voice.Agent({ instructions });
 
     await session.start({ agent, room: ctx.room });
 

@@ -661,6 +661,7 @@ export default function AgentSettingsPage() {
     "Hello. This is Priya from RegenOrthoSport"
   );
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
+  const [outboundSystemPrompt, setOutboundSystemPrompt] = useState("");
   const [agentName, setAgentName] = useState("Priya");
   const [loadingAgentSettings, setLoadingAgentSettings] = useState(true);
 
@@ -673,6 +674,7 @@ export default function AgentSettingsPage() {
           setAgentName(json.data.agentName);
           setWelcomeMessage(json.data.welcomeMessage);
           setSystemPrompt(json.data.systemPrompt);
+          setOutboundSystemPrompt(json.data.outboundSystemPrompt ?? "");
         }
       } catch {
         // leave the built-in defaults in place
@@ -758,7 +760,7 @@ export default function AgentSettingsPage() {
       const res = await fetch("/api/agent-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentName, welcomeMessage, systemPrompt }),
+        body: JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to save.");
@@ -850,8 +852,8 @@ export default function AgentSettingsPage() {
           </SectionCard>
 
           <SectionCard
-            title="System prompt"
-            description="The instructions that steer the agent's behavior and tone."
+            title="Inbound System Prompt"
+            description="The instructions that steer the agent's behavior and tone on inbound calls."
           >
             <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">
               <Sparkles className="h-3.5 w-3.5" /> Prompt canvas
@@ -860,6 +862,21 @@ export default function AgentSettingsPage() {
               rows={12}
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
+            />
+          </SectionCard>
+
+          <SectionCard
+            title="Outbound / Bulk Call System Prompt"
+            description="Used when Priya makes outbound bulk calls. Falls back to the inbound prompt if left empty."
+          >
+            <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">
+              <Sparkles className="h-3.5 w-3.5" /> Prompt canvas
+            </div>
+            <TextArea
+              rows={12}
+              value={outboundSystemPrompt}
+              onChange={(e) => setOutboundSystemPrompt(e.target.value)}
+              placeholder="Leave empty to reuse the inbound prompt above for bulk call campaigns."
             />
           </SectionCard>
         </div>
