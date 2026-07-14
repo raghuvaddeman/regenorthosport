@@ -27,10 +27,10 @@ export default async function LoginPage() {
           </span>
           <div className="text-center">
             <h1 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-              Sign in to Callwise
+              Sign in to GoTele AI
             </h1>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              Your call analytics workspace
+              Your AI voice agent workspace
             </p>
           </div>
         </div>
