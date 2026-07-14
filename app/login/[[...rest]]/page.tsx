@@ -5,15 +5,18 @@
 // optional catch-all cannot coexist on the same route (Next.js will
 // throw a route conflict at build time). Clerk needs the catch-all to
 // render its multi-step flows (password, 2FA, SSO callback) under /login.
-//
-// .env.local additions for these paths:
-//   NEXT_PUBLIC_CLERK_SIGN_IN_URL=/login
-//   NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/dashboard
 
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { SignIn } from "@clerk/nextjs";
 import { Headset } from "lucide-react";
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  // A signed-in user landing here (stale tab, bookmarked link, back button)
+  // should go straight to the dashboard rather than see the sign-in form again.
+  const { userId } = await auth();
+  if (userId) redirect("/dashboard");
+
   return (
     <div className="grid min-h-screen place-items-center bg-zinc-50 px-4 dark:bg-zinc-800">
       <div className="flex flex-col items-center">
