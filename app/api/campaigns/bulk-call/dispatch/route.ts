@@ -61,6 +61,12 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ success: true, campaigns: summary });
 }
 
+// scheduled_call_date/time are entered by the clinic in India Standard Time
+// (this app has a single India-based tenant), but this route runs on
+// Vercel's servers in UTC. Without an explicit offset, "16:20:00" parses as
+// 16:20 UTC — 5.5 hours later than the clinic actually meant.
+const IST_OFFSET = "+05:30";
+
 /** Flips any "scheduled" campaign whose scheduled call time has arrived to "in_progress". */
 async function runScheduler(supabase: ReturnType<typeof getSupabaseAdmin>) {
   const { data: due, error } = await supabase
@@ -72,7 +78,7 @@ async function runScheduler(supabase: ReturnType<typeof getSupabaseAdmin>) {
 
   const now = Date.now();
   const dueIds = due
-    .filter((c) => new Date(`${c.scheduled_call_date}T${c.scheduled_call_time}`).getTime() <= now)
+    .filter((c) => new Date(`${c.scheduled_call_date}T${c.scheduled_call_time}${IST_OFFSET}`).getTime() <= now)
     .map((c) => c.id);
 
   if (dueIds.length > 0) {
