@@ -4,8 +4,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, FileUp, Loader2, Users } from "lucide-react";
-import { CONDITIONS, type Condition } from "@/lib/campaigns/prompt-template";
+import { AlertTriangle, ArrowLeft, ChevronDown, FileUp, Loader2, Users } from "lucide-react";
+import { CONDITIONS, resolvePromptTemplate, type Condition } from "@/lib/campaigns/prompt-template";
 
 type OutboundTrunkOption = { sipTrunkId: string; name: string; numbers: string[] };
 type ParsedContact = { name: string | null; phone: string };
@@ -65,6 +65,45 @@ export default function NewBulkCallCampaignPage() {
     if (webinarDate && !scheduleTouched) setScheduledCallDate(webinarDate);
   }, [webinarDate, scheduleTouched]);
 
+  // Call Script — pre-filled from the saved outbound template (or the inbound
+  // prompt as a starting point if no outbound template is set), live-resolved
+  // as Doctor/Condition/Webinar fields change until the user edits it directly.
+  const [rawTemplate, setRawTemplate] = useState<string | null>(null);
+  const [templateSource, setTemplateSource] = useState<"outbound" | "inbound" | null>(null);
+  const [loadingTemplate, setLoadingTemplate] = useState(true);
+  const [scriptExpanded, setScriptExpanded] = useState(false);
+  const [resolvedPrompt, setResolvedPrompt] = useState("");
+  const [scriptDirty, setScriptDirty] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/agent-settings")
+      .then((res) => res.json())
+      .then((json) => {
+        if (!json.success) return;
+        const outbound = (json.data.outboundSystemPrompt ?? "").trim();
+        const inbound = (json.data.systemPrompt ?? "").trim();
+        if (outbound) {
+          setRawTemplate(outbound);
+          setTemplateSource("outbound");
+        } else {
+          setRawTemplate(inbound);
+          setTemplateSource("inbound");
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTemplate(false));
+  }, []);
+
+  useEffect(() => {
+    if (rawTemplate === null || scriptDirty) return;
+    const ready = doctorName.trim() && webinarDate && webinarTime;
+    setResolvedPrompt(
+      ready
+        ? resolvePromptTemplate(rawTemplate, { doctorName: doctorName.trim(), condition, webinarDate, webinarTime })
+        : rawTemplate
+    );
+  }, [rawTemplate, doctorName, condition, webinarDate, webinarTime, scriptDirty]);
+
   const [outboundTrunks, setOutboundTrunks] = useState<OutboundTrunkOption[]>([]);
   const [loadingTrunks, setLoadingTrunks] = useState(true);
   const [selectedTrunkId, setSelectedTrunkId] = useState("");
@@ -117,6 +156,7 @@ export default function NewBulkCallCampaignPage() {
     webinarTime &&
     scheduledCallDate &&
     scheduledCallTime &&
+    resolvedPrompt.trim() &&
     selectedTrunkId &&
     contacts.length > 0 &&
     !submitting;
@@ -138,6 +178,7 @@ export default function NewBulkCallCampaignPage() {
           meetingLink: meetingLink.trim() || undefined,
           scheduledCallDate,
           scheduledCallTime,
+          resolvedPrompt: resolvedPrompt.trim(),
           sipTrunkId: selectedTrunkId,
           fromNumber: selectedTrunk?.numbers[0] ?? null,
           concurrentCallLimit,
@@ -224,6 +265,57 @@ export default function NewBulkCallCampaignPage() {
             className={inputClasses}
           />
         </div>
+      </div>
+
+      {/* Call script */}
+      <div className="rounded-2xl border border-zinc-200/70 bg-white shadow-sm ring-1 ring-black/[0.02] dark:border-zinc-700 dark:bg-zinc-800 dark:ring-white/[0.02]">
+        <button
+          type="button"
+          onClick={() => setScriptExpanded((v) => !v)}
+          className="flex w-full items-center justify-between gap-4 p-6 text-left"
+        >
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Call Script (optional edit)</h3>
+            <p className="mt-0.5 text-xs text-zinc-400">
+              {templateSource === "inbound"
+                ? "No outbound template set — using your inbound prompt as a starting point. Click to customize for this campaign."
+                : "Uses your saved outbound template — click to customize for this campaign."}
+            </p>
+          </div>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${scriptExpanded ? "rotate-180" : ""}`} />
+        </button>
+        {scriptExpanded && (
+          <div className="border-t border-zinc-100 p-6 pt-4 dark:border-zinc-700">
+            {loadingTemplate ? (
+              <p className="text-xs text-zinc-400">Loading your saved template…</p>
+            ) : (
+              <>
+                {templateSource === "inbound" && (
+                  <div className="mb-3 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p className="text-xs">
+                      No outbound template set — using inbound prompt as a starting point. Edit as needed for outbound calls.
+                    </p>
+                  </div>
+                )}
+                <textarea
+                  rows={12}
+                  value={resolvedPrompt}
+                  onChange={(e) => {
+                    setScriptDirty(true);
+                    setResolvedPrompt(e.target.value);
+                  }}
+                  className="w-full resize-y rounded-md border border-zinc-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-zinc-900 outline-none transition-colors focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                />
+                <p className="mt-1.5 text-[11px] text-zinc-400">
+                  {scriptDirty
+                    ? "Edited for this campaign — no longer updates automatically as Doctor/Condition/Webinar fields change."
+                    : "Updates automatically as you fill in Doctor, Condition, and Webinar details above."}
+                </p>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Phone number */}

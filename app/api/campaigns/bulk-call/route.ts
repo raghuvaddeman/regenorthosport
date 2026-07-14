@@ -107,7 +107,16 @@ export async function GET() {
   return NextResponse.json({ campaigns: result });
 }
 
-/** POST: create a new webinar-RSVP campaign — resolves the prompt template and inserts contacts. */
+/**
+ * POST: create a new webinar-RSVP campaign and its contact list.
+ *
+ * resolvedPrompt is authored client-side (the "Call Script" section on the
+ * creation form pre-fills it from the outbound/inbound template and
+ * live-updates it as Doctor/Condition/Webinar fields change, until the user
+ * edits it directly) and saved verbatim here — this route no longer re-runs
+ * placeholder substitution, since the client may have hand-edited the text
+ * in ways a second pass shouldn't touch.
+ */
 export async function POST(request: NextRequest) {
   const clientId = await getClientIdFromSession();
   if (!clientId) {
@@ -130,6 +139,7 @@ export async function POST(request: NextRequest) {
     meetingLink,
     scheduledCallDate,
     scheduledCallTime,
+    resolvedPrompt,
     sipTrunkId,
     fromNumber,
     concurrentCallLimit,
@@ -143,6 +153,7 @@ export async function POST(request: NextRequest) {
     meetingLink?: string;
     scheduledCallDate?: string;
     scheduledCallTime?: string;
+    resolvedPrompt?: string;
     sipTrunkId?: string;
     fromNumber?: string;
     concurrentCallLimit?: number;
@@ -182,24 +193,26 @@ export async function POST(request: NextRequest) {
 
   const supabase = getSupabaseAdmin();
 
-  // Resolve the outbound prompt template into this campaign's locked-in script.
-  const { data: agentSettings } = await supabase
-    .from("agent_settings")
-    .select("system_prompt, outbound_system_prompt")
-    .eq("client_id", clientId)
-    .maybeSingle();
-
-  const template =
-    (agentSettings?.outbound_system_prompt as string | null)?.trim() ||
-    (agentSettings?.system_prompt as string | null)?.trim() ||
-    FALLBACK_OUTBOUND_TEMPLATE;
-
-  const resolvedPrompt = resolvePromptTemplate(template, {
-    doctorName: doctorName.trim(),
-    condition,
-    webinarDate,
-    webinarTime,
-  });
+  // Defensive fallback only — the form always pre-fills the Call Script box,
+  // so this should be unreachable in practice.
+  let finalPrompt = resolvedPrompt?.trim();
+  if (!finalPrompt) {
+    const { data: agentSettings } = await supabase
+      .from("agent_settings")
+      .select("system_prompt, outbound_system_prompt")
+      .eq("client_id", clientId)
+      .maybeSingle();
+    const template =
+      (agentSettings?.outbound_system_prompt as string | null)?.trim() ||
+      (agentSettings?.system_prompt as string | null)?.trim() ||
+      FALLBACK_OUTBOUND_TEMPLATE;
+    finalPrompt = resolvePromptTemplate(template, {
+      doctorName: doctorName.trim(),
+      condition,
+      webinarDate,
+      webinarTime,
+    });
+  }
 
   const { data: campaign, error: campaignError } = await supabase
     .from(TABLE_CAMPAIGNS)
@@ -213,7 +226,7 @@ export async function POST(request: NextRequest) {
       meeting_link: meetingLink?.trim() || null,
       scheduled_call_date: scheduledCallDate,
       scheduled_call_time: scheduledCallTime,
-      resolved_prompt: resolvedPrompt,
+      resolved_prompt: finalPrompt,
       from_sip_trunk_id: sipTrunkId,
       from_number: fromNumber ?? null,
       concurrent_call_limit: Math.max(1, Math.min(20, concurrentCallLimit ?? 1)),
