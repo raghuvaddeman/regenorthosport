@@ -9,7 +9,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { SignIn } from "@clerk/nextjs";
-import { Headset } from "lucide-react";
+import Image from "next/image";
 
 export default async function LoginPage() {
   // A signed-in user landing here (stale tab, bookmarked link, back button)
@@ -22,9 +22,7 @@ export default async function LoginPage() {
       <div className="flex flex-col items-center">
         {/* Brand mark above Clerk's card */}
         <div className="mb-6 flex flex-col items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-lg bg-indigo-600 text-white">
-            <Headset className="h-5 w-5" strokeWidth={2} />
-          </span>
+          <Image src="/logo.png" alt="RegenOrthoSport" width={1676} height={220} priority className="h-12 w-auto" />
           <div className="text-center">
             <h1 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
               Sign in to GoTele AI
@@ -38,13 +36,21 @@ export default async function LoginPage() {
         <SignIn
           appearance={{
             variables: {
-              colorPrimary: "#4f46e5", // indigo-600
+              colorPrimary: "#b41f24", // brand-600 — matches the RegenOrthoSport red used across the dashboard
               borderRadius: "0.5rem",
+            },
+            options: {
+              // Clerk's own Dashboard-configured logo, rendered inside the card — was
+              // rendering at its default (tiny) size, so it's explicitly re-sized below.
+              logoImageUrl: "/logo.png",
+              logoPlacement: "inside",
             },
             elements: {
               card: "shadow-sm border border-zinc-200 dark:border-zinc-600",
               headerTitle: "hidden", // brand block above replaces it
               headerSubtitle: "hidden",
+              logoBox: "mb-2",
+              logoImage: "h-10 w-auto",
               formButtonPrimary: "text-sm normal-case",
             },
           }}
