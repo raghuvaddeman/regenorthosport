@@ -238,7 +238,10 @@ export async function POST(request: NextRequest) {
 
   if (campaignError || !campaign) {
     console.error("Supabase error (create bulk campaign)", campaignError);
-    return NextResponse.json({ error: "Failed to create campaign." }, { status: 502 });
+    return NextResponse.json(
+      { error: `Failed to create campaign: ${campaignError?.message ?? "unknown error"}` },
+      { status: 502 }
+    );
   }
 
   const contactRows = cleanContacts.map((c) => ({
@@ -252,7 +255,10 @@ export async function POST(request: NextRequest) {
   if (contactsError) {
     console.error("Supabase error (insert bulk campaign contacts)", contactsError);
     await supabase.from(TABLE_CAMPAIGNS).delete().eq("id", campaign.id);
-    return NextResponse.json({ error: "Failed to save the contact list." }, { status: 502 });
+    return NextResponse.json(
+      { error: `Failed to save the contact list: ${contactsError.message}` },
+      { status: 502 }
+    );
   }
 
   return NextResponse.json({ campaign });
