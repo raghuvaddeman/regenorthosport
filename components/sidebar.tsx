@@ -7,16 +7,31 @@ import { useUser, useClerk } from "@clerk/nextjs";
 import {
   LayoutDashboard, PhoneCall, Users, Settings, Database,
   PhoneForwarded, FileText, BrainCircuit, ShieldAlert, Radio, Phone, CreditCard, Plug, Menu, X,
-  UserCog
+  UserCog, PhoneOutgoing, MessagesSquare
 } from "lucide-react";
 
-const navigationData = [
+type NavItem = {
+  label: string;
+  href: string;
+  icon: React.ElementType;
+  isBeta?: boolean;
+  isNew?: boolean;
+};
+
+const navigationData: { groupName: string; items: NavItem[] }[] = [
   {
     groupName: "Practice Overview",
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Call Logs", href: "/dashboard/calls", icon: PhoneCall },
       { label: "Patient Database", href: "/dashboard/patients", icon: Users },
+    ],
+  },
+  {
+    groupName: "Campaigns",
+    items: [
+      { label: "Bulk Call", href: "/dashboard/campaigns/bulk-call", icon: PhoneOutgoing },
+      { label: "Broadcast", href: "/dashboard/campaigns/broadcast", icon: MessagesSquare, isNew: true },
     ],
   },
   {
@@ -172,6 +187,7 @@ export default function Sidebar() {
                           <span>{item.label}</span>
                         </div>
                         {item.isBeta && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-gray-600 uppercase dark:bg-zinc-600 dark:text-zinc-400">Beta</span>}
+                        {item.isNew && <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-brand-600 uppercase dark:bg-brand-500/10 dark:text-brand-400">New</span>}
                       </Link>
                     </li>
                   );

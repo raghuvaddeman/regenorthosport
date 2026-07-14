@@ -1,4 +1,4 @@
-import { SipClient } from "livekit-server-sdk";
+import { SipClient, RoomServiceClient } from "livekit-server-sdk";
 import { SIPTransport, ListUpdate } from "@livekit/protocol";
 import type {
   CreateSipParticipantOptions,
@@ -139,4 +139,41 @@ export function dispatchOutboundCall(
   opts?: CreateSipParticipantOptions
 ) {
   return getSipClient().createSipParticipant(sipTrunkId, toNumber, roomName, opts);
+}
+
+let roomServiceClient: RoomServiceClient | null = null;
+
+/** Lazily builds the singleton LiveKit room-service client (same env vars as the SIP client). */
+function getRoomServiceClient(): RoomServiceClient {
+  if (roomServiceClient) return roomServiceClient;
+
+  const host = process.env.LIVEKIT_URL;
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  if (!host || !apiKey || !apiSecret) {
+    throw new Error(
+      "Missing LiveKit configuration (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)."
+    );
+  }
+
+  roomServiceClient = new RoomServiceClient(host, apiKey, apiSecret);
+  return roomServiceClient;
+}
+
+/**
+ * True while `roomName` still exists — i.e. the SIP participant dropped into it
+ * by dispatchOutboundCall hasn't hung up yet. Used by the bulk-call dispatcher to
+ * detect when an in-flight call has finished, without needing agent/worker.ts to
+ * report per-campaign state itself.
+ */
+export async function bulkCallRoomIsActive(roomName: string): Promise<boolean> {
+  const rooms = await getRoomServiceClient().listRooms([roomName]);
+  return rooms.length > 0;
+}
+
+/** Force-ends a room — used to cut off a bulk-call contact stuck ringing too long. */
+export async function endBulkCallRoom(roomName: string): Promise<void> {
+  await getRoomServiceClient()
+    .deleteRoom(roomName)
+    .catch(() => {});
 }

@@ -593,7 +593,31 @@ function startHeartbeat() {
   setInterval(send, 15_000);
 }
 
+// Ticks the bulk-call campaign engine (app/api/campaigns/bulk-call/dispatch) —
+// this worker process is just the reliable "clock"; all the actual campaign
+// state/dialing logic lives server-side where the Supabase admin client and
+// LiveKit SDK are already set up. Same fire-and-forget pattern as the heartbeat.
+function startBulkCallDispatcher() {
+  const appUrl = process.env.APP_URL;
+  const secret = process.env.INTERNAL_SECRET_KEY;
+  if (!appUrl || !secret) {
+    console.warn('Bulk call dispatcher disabled: APP_URL or INTERNAL_SECRET_KEY is not set.');
+    return;
+  }
+
+  const tick = () => {
+    fetch(`${appUrl}/api/campaigns/bulk-call/dispatch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': secret },
+    }).catch((err) => console.warn('Bulk call dispatch tick failed:', err.message));
+  };
+
+  tick();
+  setInterval(tick, 15_000);
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   startHeartbeat();
+  startBulkCallDispatcher();
   cli.runApp(new ServerOptions({ agent: fileURLToPath(import.meta.url) }));
 }
