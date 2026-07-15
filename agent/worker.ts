@@ -561,10 +561,15 @@ export default defineAgent({
         voice: MODEL_DEFAULTS.realtimeVoice,
         modalities: [Modality.AUDIO],
         // language deliberately left unset — see MULTILINGUAL_INSTRUCTIONS comment.
-        // languageCodes are hints for transcript generation, not a hard restriction
-        // on which language the model listens/responds in.
-        inputAudioTranscription: { languageCodes: ['en', 'hi', 'te', 'mr', 'bn', 'gu'] },
-        outputAudioTranscription: { languageCodes: ['en', 'hi', 'te', 'mr', 'bn', 'gu'] },
+        // languageCodes (a hint list) is NOT supported on the standard Gemini
+        // Developer API (apiKey auth) — only on Vertex AI, which this project
+        // doesn't use. Setting it throws "languageCodes parameter is not
+        // supported in Gemini API." and kills the whole session (confirmed via
+        // a live test call — every call failed with zero audio). Empty objects
+        // still enable transcription, just with auto-detected language instead
+        // of a hint list, which is what we want anyway for auto multi-language.
+        inputAudioTranscription: {},
+        outputAudioTranscription: {},
         thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET, thinkingLevel: GEMINI_THINKING_LEVEL as any },
         realtimeInputConfig: {
           automaticActivityDetection: {
