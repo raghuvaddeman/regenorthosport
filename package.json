@@ -17,8 +17,6 @@
     "@google/genai": "^1.52.0",
     "@livekit/agents": "^1.5.0",
     "@livekit/agents-plugin-google": "^1.5.0",
-    "@livekit/agents-plugin-sarvam": "^1.5.0",
-    "@livekit/agents-plugin-silero": "^1.5.0",
     "@livekit/protocol": "^1.49.0",
     "@supabase/supabase-js": "^2.110.0",
     "dotenv": "^17.4.2",
