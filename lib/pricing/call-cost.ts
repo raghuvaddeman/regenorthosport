@@ -1,46 +1,29 @@
-// Per-call cost estimation for the Gemini Live API (unified STT+LLM+TTS) +
-// plain Gemini text (post-call transcript translation/summary) + LiveKit.
+// Per-call cost estimation for Gemini LLM + Sarvam STT/TTS + LiveKit.
 //
-// Rates verified against official pricing pages on 2026-07-15:
-//   Gemini Live: https://ai.google.dev/gemini-api/docs/pricing (gemini-3.1-flash-live-preview row)
-//   Gemini text: https://ai.google.dev/gemini-api/docs/pricing
-//   LiveKit:     https://livekit.com/pricing
+// Rates verified against official pricing pages on 2026-07-12:
+//   Gemini:  https://ai.google.dev/gemini-api/docs/pricing
+//   Sarvam:  https://docs.sarvam.ai/api-reference-docs/pricing
+//   LiveKit: https://livekit.com/pricing
 //
 // Does NOT include Vobiz's own PSTN/telephony billing — that's separate from
 // LiveKit and untrackable from this codebase. The `livekit` cost line only
 // covers LiveKit Cloud's own agent-session + SIP-trunk infrastructure.
-//
-// Sarvam STT/TTS pricing was removed when the voice pipeline switched to the
-// Gemini Live API (unified STT+LLM+TTS) — see agent/worker.ts. The `sttCostInr`/
-// `ttsCostInr` field names are kept (they map directly to existing `calls` table
-// columns of the same name, avoiding a schema migration) but now represent the
-// Live API's input-audio-token cost and output-audio-token cost respectively,
-// not literal Sarvam STT/TTS charges.
 
-export const PRICING_VERSION = "2026-07-realtime";
+export const PRICING_VERSION = "2026-07";
 
 // TODO(cost): update when FX moves meaningfully.
 export const INR_PER_USD = 95.5;
 
-// Plain text-in/text-out Gemini, used only for post-call transcript
-// translation + AI summary (agent/worker.ts's buildTranscriptAndSummary).
 export const GEMINI_PRICING: Record<string, { inputPerMTokUsd: number; outputPerMTokUsd: number }> = {
   "gemini-3.1-flash-lite": { inputPerMTokUsd: 0.25, outputPerMTokUsd: 1.5 },
 };
 
-// The Live API's conversational model: audio tokens (32/sec in, 25/sec out) are
-// priced well above text tokens. See node_modules/@livekit/agents-plugin-google/
-// dist/realtime/api_proto.d.ts for the model's token-count metric shape.
-export const GEMINI_REALTIME_PRICING: Record<
-  string,
-  { inputAudioPerMTokUsd: number; outputAudioPerMTokUsd: number; inputTextPerMTokUsd: number; outputTextPerMTokUsd: number }
-> = {
-  "gemini-3.1-flash-live-preview": {
-    inputAudioPerMTokUsd: 3.0,
-    outputAudioPerMTokUsd: 12.0,
-    inputTextPerMTokUsd: 0.75,
-    outputTextPerMTokUsd: 4.5,
-  },
+export const SARVAM_STT_PRICING: Record<string, { inrPerHour: number }> = {
+  "saaras:v3": { inrPerHour: 30 },
+};
+
+export const SARVAM_TTS_PRICING: Record<string, { inrPer10kChars: number }> = {
+  "bulbul:v2": { inrPer10kChars: 15 },
 };
 
 // TODO(cost): confirm actual LiveKit plan tier — sipTrunkUsdPerMin is the
@@ -51,61 +34,56 @@ export const LIVEKIT_PRICING = {
 };
 
 const DEFAULT_GEMINI_RATE = GEMINI_PRICING["gemini-3.1-flash-lite"];
-const DEFAULT_REALTIME_RATE = GEMINI_REALTIME_PRICING["gemini-3.1-flash-live-preview"];
+const DEFAULT_SARVAM_STT_RATE = SARVAM_STT_PRICING["saaras:v3"];
+const DEFAULT_SARVAM_TTS_RATE = SARVAM_TTS_PRICING["bulbul:v2"];
 
 export type CallUsage = {
-  realtimeModel: string;
-  inputAudioTokens: number;
-  inputTextTokens: number;
-  outputAudioTokens: number;
-  outputTextTokens: number;
-  // Separate plain-text Gemini usage from the post-call translate/summary pass.
   geminiModel: string;
-  summaryPromptTokens: number;
-  summaryCompletionTokens: number;
+  llmPromptTokens: number;
+  llmCompletionTokens: number;
+  sttModel: string;
+  sttAudioDurationMs: number;
+  ttsModel: string;
+  ttsCharactersCount: number;
   callDurationSec: number;
 };
 
 export type CallCostBreakdown = {
   llmCostInr: number;
-  sttCostInr: number; // Live API input-audio-token cost (see file header).
-  ttsCostInr: number; // Live API output-audio-token cost (see file header).
+  sttCostInr: number;
+  ttsCostInr: number;
   livekitCostInr: number;
   totalCostInr: number;
   pricingVersion: string;
 };
 
 export function computeCallCost(usage: CallUsage): CallCostBreakdown {
-  const realtimeRate = GEMINI_REALTIME_PRICING[usage.realtimeModel];
-  if (!realtimeRate) {
-    console.warn(
-      `No Gemini Live pricing entry for model "${usage.realtimeModel}", falling back to gemini-3.1-flash-live-preview rate.`
-    );
-  }
-  const { inputAudioPerMTokUsd, outputAudioPerMTokUsd, inputTextPerMTokUsd, outputTextPerMTokUsd } =
-    realtimeRate ?? DEFAULT_REALTIME_RATE;
-
-  const inputAudioCostUsd = (usage.inputAudioTokens / 1_000_000) * inputAudioPerMTokUsd;
-  const outputAudioCostUsd = (usage.outputAudioTokens / 1_000_000) * outputAudioPerMTokUsd;
-  const realtimeTextCostUsd =
-    (usage.inputTextTokens / 1_000_000) * inputTextPerMTokUsd + (usage.outputTextTokens / 1_000_000) * outputTextPerMTokUsd;
-
   const geminiRate = GEMINI_PRICING[usage.geminiModel];
   if (!geminiRate) {
     console.warn(`No Gemini pricing entry for model "${usage.geminiModel}", falling back to gemini-3.1-flash-lite rate.`);
   }
   const { inputPerMTokUsd, outputPerMTokUsd } = geminiRate ?? DEFAULT_GEMINI_RATE;
-  const summaryCostUsd =
-    (usage.summaryPromptTokens / 1_000_000) * inputPerMTokUsd + (usage.summaryCompletionTokens / 1_000_000) * outputPerMTokUsd;
+  const llmCostUsd =
+    (usage.llmPromptTokens / 1_000_000) * inputPerMTokUsd + (usage.llmCompletionTokens / 1_000_000) * outputPerMTokUsd;
 
-  const llmCostUsd = realtimeTextCostUsd + summaryCostUsd;
+  const sttRate = SARVAM_STT_PRICING[usage.sttModel];
+  if (!sttRate) {
+    console.warn(`No Sarvam STT pricing entry for model "${usage.sttModel}", falling back to saaras:v3 rate.`);
+  }
+  const { inrPerHour } = sttRate ?? DEFAULT_SARVAM_STT_RATE;
+  const sttCostInr = (usage.sttAudioDurationMs / 3_600_000) * inrPerHour;
+
+  const ttsRate = SARVAM_TTS_PRICING[usage.ttsModel];
+  if (!ttsRate) {
+    console.warn(`No Sarvam TTS pricing entry for model "${usage.ttsModel}", falling back to bulbul:v2 rate.`);
+  }
+  const { inrPer10kChars } = ttsRate ?? DEFAULT_SARVAM_TTS_RATE;
+  const ttsCostInr = (usage.ttsCharactersCount / 10_000) * inrPer10kChars;
 
   const callDurationMin = usage.callDurationSec / 60;
   const livekitCostUsd = callDurationMin * (LIVEKIT_PRICING.agentSessionUsdPerMin + LIVEKIT_PRICING.sipTrunkUsdPerMin);
 
   const llmCostInr = llmCostUsd * INR_PER_USD;
-  const sttCostInr = inputAudioCostUsd * INR_PER_USD;
-  const ttsCostInr = outputAudioCostUsd * INR_PER_USD;
   const livekitCostInr = livekitCostUsd * INR_PER_USD;
 
   return {

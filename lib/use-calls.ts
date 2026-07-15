@@ -17,7 +17,7 @@ export type Call = {
   transcript: string;
   summary: string;
   rating: number; // 1–5, 0 when analysis hasn't arrived yet
-  costInr: number; // estimated Gemini Live (voice) + Gemini (transcript/summary) + LiveKit cost, in INR
+  costInr: number; // estimated Gemini + Sarvam STT/TTS + LiveKit cost, in INR
   at: string; // ISO datetime
 };
 

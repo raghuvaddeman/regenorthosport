@@ -171,6 +171,7 @@ export async function POST(request: NextRequest) {
       callUuid,
       customerPhone,
       durationSec,
+      ttsAudioDurationMs,
       usage,
       recordingUrl,
       transcript,
@@ -180,6 +181,7 @@ export async function POST(request: NextRequest) {
       callUuid?: string;
       customerPhone?: string;
       durationSec?: number;
+      ttsAudioDurationMs?: number;
       usage?: CallUsage;
       recordingUrl?: string | null;
       transcript?: string | null;
@@ -208,17 +210,11 @@ export async function POST(request: NextRequest) {
       call_uuid: callUuid,
       customer_phone: customerPhone ?? "",
       duration_sec: durationSec ?? usage.callDurationSec,
-      // Combines the live conversation's text-token portion with the post-call
-      // translate/summary pass's tokens — same "total LLM tokens for this call"
-      // meaning as before the Live API switch.
-      llm_prompt_tokens: usage.inputTextTokens + usage.summaryPromptTokens,
-      llm_completion_tokens: usage.outputTextTokens + usage.summaryCompletionTokens,
-      // No longer tracked: the Live API doesn't expose a separate STT audio
-      // duration or discrete TTS character count (see lib/pricing/call-cost.ts
-      // header for what stt_cost_inr/tts_cost_inr now represent instead).
-      stt_audio_duration_ms: null,
-      tts_characters_count: null,
-      tts_audio_duration_ms: null,
+      llm_prompt_tokens: usage.llmPromptTokens,
+      llm_completion_tokens: usage.llmCompletionTokens,
+      stt_audio_duration_ms: usage.sttAudioDurationMs,
+      tts_characters_count: usage.ttsCharactersCount,
+      tts_audio_duration_ms: ttsAudioDurationMs ?? null,
       recording_url: recordingUrl ?? null,
       transcript: transcript ?? null,
       ai_summary: aiSummary ?? null,
