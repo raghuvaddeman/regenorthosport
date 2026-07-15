@@ -20,11 +20,13 @@ type NavItem = {
 
 const navigationData: { groupName: string; items: NavItem[] }[] = [
   {
-    groupName: "Practice Overview",
+    groupName: "Project Overview",
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Call Logs", href: "/dashboard/calls", icon: PhoneCall },
       { label: "Patient Database", href: "/dashboard/patients", icon: Users },
+      { label: "Transcripts & Summaries", href: "/dashboard/transcripts", icon: FileText },
+      { label: "Sentiment Analysis", href: "/dashboard/sentiment", icon: BrainCircuit },
     ],
   },
   {
@@ -45,8 +47,6 @@ const navigationData: { groupName: string; items: NavItem[] }[] = [
   {
     groupName: "Insights & Compliance",
     items: [
-      { label: "Transcripts & Summaries", href: "/dashboard/transcripts", icon: FileText },
-      { label: "Sentiment Analysis", href: "/dashboard/sentiment", icon: BrainCircuit },
       { label: "Audit Logs", href: "/dashboard/audit-logs", icon: ShieldAlert },
     ],
   },
