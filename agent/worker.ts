@@ -199,11 +199,15 @@ const VAD_END_SENSITIVITY = EndSensitivity.END_SENSITIVITY_LOW;
 const VAD_PREFIX_PADDING_MS = 150;
 const VAD_SILENCE_DURATION_MS = 600;
 
-// A/B testing knob: overrides the dashboard-configured realtime model when set, so
-// future model swaps for a test batch don't require touching the Providers page.
-// Not needed for the current pinned default (see MODEL_DEFAULTS.realtimeModel) —
-// leave unset in production.
-const REALTIME_MODEL_OVERRIDE = process.env.LLM_MODEL;
+// A/B testing knob: overrides the pinned realtime model when set, so future
+// model swaps for a test batch don't require a code change. Deliberately a
+// DIFFERENT env var name from the old pipeline's LLM_MODEL (which the VPS's
+// .env still has set to gemini-3.1-flash-lite, a text-only model that isn't
+// Live-API-capable) — reusing that name here caused every call to fail with
+// "not supported for bidiGenerateContent" once this override silently picked
+// it up. Confirmed via a live test call. Leave REALTIME_MODEL unset in
+// production; LLM_MODEL can stay set (it no longer does anything here).
+const REALTIME_MODEL_OVERRIDE = process.env.REALTIME_MODEL;
 
 // Callers may speak English (Indian accent), Hindi, Telugu, Marathi, Bengali, or
 // Gujarati. The Live API's `language` option takes a single fixed code, which
