@@ -66,6 +66,21 @@ function parseBulkCallRoomName(roomName: string): { campaignId: string; contactI
   return { campaignId: match[1], contactId: match[2] };
 }
 
+/**
+ * Inbound rooms are always named by LiveKit's SIP dispatch rule, which uses
+ * `roomPrefix: 'call'` (see app/api/telephony/route.ts's createInboundDispatchRule
+ * call) — so every room this worker didn't name itself starts with "call-".
+ * The two call sites that dial out (bulk-call dispatch's `bulk_...` rooms and
+ * Agent Settings' manual test trigger's `test-...` rooms) are the only ones
+ * where we pick the room name, so their prefixes are the outbound signal.
+ * There's no first-class "direction" field on the SIP participant/room to
+ * read instead — this is a naming convention, not protocol metadata, so it
+ * breaks silently if a future call path picks a room name outside this set.
+ */
+function isOutboundRoom(roomName: string): boolean {
+  return /^(bulk_|test-)/.test(roomName);
+}
+
 /** Fetches a bulk-call campaign's locked-in, placeholder-resolved outbound script. */
 async function fetchCampaignResolvedPrompt(campaignId: string): Promise<string | null> {
   const appUrl = process.env.APP_URL;
@@ -228,6 +243,7 @@ const LLM_MODEL_OVERRIDE = process.env.LLM_MODEL;
 async function reportCallCost(payload: {
   callUuid: string;
   customerPhone: string;
+  callDirection: 'inbound' | 'outbound';
   durationSec: number;
   ttsAudioDurationMs: number;
   usage: CallUsage;
@@ -444,6 +460,7 @@ function attachLatencyLogging(
     endpointingMinDelayMs: number;
     endpointingMaxDelayMs: number;
     callUuid: string;
+    callDirection: 'inbound' | 'outbound';
     callStartedAt: number;
     callInfo: { customerPhone: string; egressId: string };
     egressClient: EgressClient | null;
@@ -597,6 +614,7 @@ function attachLatencyLogging(
       await reportCallCost({
         callUuid: activeConfig.callUuid,
         customerPhone: activeConfig.callInfo.customerPhone,
+        callDirection: activeConfig.callDirection,
         durationSec,
         ttsAudioDurationMs,
         recordingUrl,
@@ -632,6 +650,7 @@ export default defineAgent({
     const egressClient = getEgressClient();
 
     const bulkCallInfo = parseBulkCallRoomName(ctx.room.name ?? '');
+    const callDirection: 'inbound' | 'outbound' = isOutboundRoom(ctx.room.name ?? '') ? 'outbound' : 'inbound';
 
     const [settings, models, campaignResolvedPrompt] = await Promise.all([
       fetchAgentSettings(),
@@ -663,6 +682,7 @@ export default defineAgent({
       endpointingMinDelayMs: ENDPOINTING_MIN_DELAY_MS,
       endpointingMaxDelayMs: ENDPOINTING_MAX_DELAY_MS,
       callUuid,
+      callDirection,
       callStartedAt,
       callInfo,
       egressClient,

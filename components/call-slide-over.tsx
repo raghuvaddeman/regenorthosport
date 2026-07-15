@@ -52,6 +52,23 @@ export function RatingBadge({ value }: { value: number }) {
   );
 }
 
+export function CallTypeBadge({ direction }: { direction: "inbound" | "outbound" | null }) {
+  if (!direction) {
+    return <span className="text-zinc-300 dark:text-zinc-600">—</span>;
+  }
+  const tone =
+    direction === "inbound"
+      ? "border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+      : "border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-400";
+  return (
+    <span
+      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize ${tone}`}
+    >
+      {direction}
+    </span>
+  );
+}
+
 export function LatencyBadge({ latencyMetrics }: { latencyMetrics: CallLatencyMetrics | null }) {
   const avgTotalMs = latencyMetrics?.summary.avgTotalMs;
   if (avgTotalMs == null) {

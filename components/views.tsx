@@ -1,24 +1,20 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Search, Shield, User, Landmark, Play, Pause, MessageSquareText } from "lucide-react";
-import { useAudio } from "./audio-player";
+import { Search, Shield, User, Landmark } from "lucide-react";
 import { useCallsContext } from "@/lib/calls-context";
-import { CallSlideOver } from "./call-slide-over";
+import { CallTypeBadge } from "./call-slide-over";
 import { TimeRangeFilter } from "./time-range-filter";
 import { filterByRange, type TimeRange } from "@/lib/time-range";
-import type { Call } from "@/lib/use-calls";
 
 /* ----------------- CALL LOGS VIEW ----------------- */
 export function CallLogsView() {
   const { calls, loading } = useCallsContext();
   const [search, setSearch] = useState("");
   const [minRating, setMinRating] = useState("0");
-  const [openCall, setOpenCall] = useState<Call | null>(null);
   const [range, setRange] = useState<TimeRange>("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const { currentCall, isPlaying, play } = useAudio();
 
   const rangeCalls = useMemo(
     () => filterByRange(calls, range, customFrom, customTo),
@@ -80,71 +76,49 @@ export function CallLogsView() {
               <tr className="border-b border-zinc-200 bg-zinc-50/70 text-zinc-500 dark:border-zinc-600 dark:bg-zinc-700/50">
                 <th className="p-4 font-medium">Timestamp</th>
                 <th className="p-4 font-medium">Customer Phone</th>
+                <th className="p-4 font-medium">Call Type</th>
                 <th className="p-4 font-medium">Duration</th>
-                <th className="p-4 font-medium">Rating</th>
                 <th className="p-4 font-medium">AI Insight Summary</th>
-                <th className="p-4 font-medium text-center">Chat Transcript</th>
-                <th className="p-4 font-medium text-right">Playback</th>
+                <th className="p-4 font-medium">Rating</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-600">
               {loading && filteredCalls.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-zinc-400 animate-pulse">
+                  <td colSpan={6} className="p-8 text-center text-zinc-400 animate-pulse">
                     Loading call logs from Supabase…
                   </td>
                 </tr>
               ) : filteredCalls.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-zinc-400">No telemetry matches found.</td>
+                  <td colSpan={6} className="p-8 text-center text-zinc-400">No telemetry matches found.</td>
                 </tr>
               ) : (
-                filteredCalls.map((c) => {
-                  const isCurrent = currentCall?.uuid === c.uuid && isPlaying;
-                  return (
-                    <tr key={c.uuid} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-700/30">
-                      <td className="p-4 font-medium whitespace-nowrap">{new Date(c.at).toLocaleString()}</td>
-                      <td className="p-4 font-mono">{c.phone || "Anonymous"}</td>
-                      <td className="p-4">{Math.floor(c.durationSec / 60)}:{(c.durationSec % 60).toString().padStart(2, "0")}</td>
-                      <td className="p-4">
-                        <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
-                          c.rating >= 4 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" :
-                          c.rating >= 3 ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" :
-                          "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
-                        }`}>
-                          {c.rating.toFixed(1)} ★
-                        </span>
-                      </td>
-                      <td className="p-4 max-w-sm truncate text-zinc-600 dark:text-zinc-400" title={c.summary}>{c.summary}</td>
-                      <td className="p-4 text-center">
-                        <button
-                          onClick={() => setOpenCall(c)}
-                          disabled={!c.transcript}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-700 hover:bg-zinc-200 disabled:opacity-30 dark:bg-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-500"
-                          title="View chat transcript"
-                        >
-                          <MessageSquareText className="h-3.5 w-3.5" />
-                        </button>
-                      </td>
-                      <td className="p-4 text-right">
-                        <button
-                          onClick={() => play(c)}
-                          disabled={!c.recordingUrl}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-700 hover:bg-zinc-200 disabled:opacity-30 dark:bg-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-500"
-                        >
-                          {isCurrent ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3 fill-current" />}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
+                filteredCalls.map((c) => (
+                  <tr key={c.uuid} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-700/30">
+                    <td className="p-4 font-medium whitespace-nowrap">{new Date(c.at).toLocaleString()}</td>
+                    <td className="p-4 font-mono">{c.phone || "Anonymous"}</td>
+                    <td className="p-4">
+                      <CallTypeBadge direction={c.callDirection} />
+                    </td>
+                    <td className="p-4">{Math.floor(c.durationSec / 60)}:{(c.durationSec % 60).toString().padStart(2, "0")}</td>
+                    <td className="p-4 max-w-sm truncate text-zinc-600 dark:text-zinc-400" title={c.summary}>{c.summary}</td>
+                    <td className="p-4">
+                      <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
+                        c.rating >= 4 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" :
+                        c.rating >= 3 ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" :
+                        "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
+                      }`}>
+                        {c.rating.toFixed(1)} ★
+                      </span>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
       </div>
-
-      {openCall && <CallSlideOver call={openCall} onClose={() => setOpenCall(null)} />}
     </div>
   );
 }

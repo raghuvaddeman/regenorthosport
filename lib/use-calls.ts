@@ -13,6 +13,7 @@ export type Call = {
   uuid: string;
   clientId: string;
   phone: string;
+  callDirection: "inbound" | "outbound" | null; // null for calls made before this was tracked
   durationSec: number;
   recordingUrl: string;
   transcript: string;

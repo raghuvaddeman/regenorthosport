@@ -52,6 +52,7 @@ type DbCallRow = {
   client_id?: string | null;
   phone?: string | null;
   customer_phone?: string | null;
+  call_direction?: string | null;
   duration_sec?: number | null;
   call_duration?: number | null;
   recording_url?: string | null;
@@ -78,6 +79,8 @@ function normalizeRow(row: DbCallRow) {
     uuid: row.uuid ?? row.call_uuid ?? id,
     clientId: row.client_id ?? "",
     phone: row.phone ?? row.customer_phone ?? "",
+    callDirection:
+      row.call_direction === "inbound" || row.call_direction === "outbound" ? row.call_direction : null,
     durationSec: Number(row.duration_sec ?? row.call_duration ?? 0),
     recordingUrl: row.recording_url ?? "",
     transcript: row.transcript ?? "",
@@ -181,6 +184,7 @@ export async function POST(request: NextRequest) {
       clientId: bodyClientId,
       callUuid,
       customerPhone,
+      callDirection,
       durationSec,
       ttsAudioDurationMs,
       usage,
@@ -192,6 +196,7 @@ export async function POST(request: NextRequest) {
       clientId?: string;
       callUuid?: string;
       customerPhone?: string;
+      callDirection?: "inbound" | "outbound";
       durationSec?: number;
       ttsAudioDurationMs?: number;
       usage?: CallUsage;
@@ -222,6 +227,7 @@ export async function POST(request: NextRequest) {
       client_id: clientId,
       call_uuid: callUuid,
       customer_phone: customerPhone ?? "",
+      call_direction: callDirection ?? null,
       duration_sec: durationSec ?? usage.callDurationSec,
       llm_prompt_tokens: usage.llmPromptTokens,
       llm_completion_tokens: usage.llmCompletionTokens,
