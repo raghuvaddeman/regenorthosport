@@ -81,8 +81,6 @@ export function CallLogsView() {
                 <th className="p-4 font-medium">Timestamp</th>
                 <th className="p-4 font-medium">Customer Phone</th>
                 <th className="p-4 font-medium">Duration</th>
-                <th className="p-4 font-medium">Cost</th>
-                <th className="p-4 font-medium">Latency</th>
                 <th className="p-4 font-medium">Rating</th>
                 <th className="p-4 font-medium">AI Insight Summary</th>
                 <th className="p-4 font-medium text-center">Chat Transcript</th>
@@ -92,13 +90,13 @@ export function CallLogsView() {
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-600">
               {loading && filteredCalls.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-zinc-400 animate-pulse">
+                  <td colSpan={7} className="p-8 text-center text-zinc-400 animate-pulse">
                     Loading call logs from Supabase…
                   </td>
                 </tr>
               ) : filteredCalls.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-zinc-400">No telemetry matches found.</td>
+                  <td colSpan={7} className="p-8 text-center text-zinc-400">No telemetry matches found.</td>
                 </tr>
               ) : (
                 filteredCalls.map((c) => {
@@ -108,25 +106,6 @@ export function CallLogsView() {
                       <td className="p-4 font-medium whitespace-nowrap">{new Date(c.at).toLocaleString()}</td>
                       <td className="p-4 font-mono">{c.phone || "Anonymous"}</td>
                       <td className="p-4">{Math.floor(c.durationSec / 60)}:{(c.durationSec % 60).toString().padStart(2, "0")}</td>
-                      <td className="p-4 font-mono">₹{c.costInr.toFixed(2)}</td>
-                      <td className="p-4 font-mono">
-                        {c.latencyMetrics?.summary.avgTotalMs != null ? (
-                          <span
-                            className={
-                              c.latencyMetrics.summary.avgTotalMs <= 1500
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : c.latencyMetrics.summary.avgTotalMs <= 2500
-                                  ? "text-amber-600 dark:text-amber-400"
-                                  : "text-rose-600 dark:text-rose-400"
-                            }
-                            title={`avg over ${c.latencyMetrics.summary.turnCount} turns (min ${c.latencyMetrics.summary.minTotalMs}ms, max ${c.latencyMetrics.summary.maxTotalMs}ms)`}
-                          >
-                            {(c.latencyMetrics.summary.avgTotalMs / 1000).toFixed(1)}s
-                          </span>
-                        ) : (
-                          <span className="text-zinc-300 dark:text-zinc-600">—</span>
-                        )}
-                      </td>
                       <td className="p-4">
                         <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
                           c.rating >= 4 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" :

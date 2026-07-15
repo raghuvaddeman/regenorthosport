@@ -4,6 +4,7 @@
 import { useRef, useState } from "react";
 import { Play, Pause, X, Sparkles, Star, ChevronDown, Gauge } from "lucide-react";
 import type { Call } from "@/lib/use-calls";
+import type { CallLatencyMetrics } from "@/lib/observability/call-latency";
 
 /* ------------------------------- Utilities ------------------------------ */
 
@@ -47,6 +48,27 @@ export function RatingBadge({ value }: { value: number }) {
     >
       <Star className="h-3 w-3 fill-current" />
       {value || 0}.0
+    </span>
+  );
+}
+
+export function LatencyBadge({ latencyMetrics }: { latencyMetrics: CallLatencyMetrics | null }) {
+  const avgTotalMs = latencyMetrics?.summary.avgTotalMs;
+  if (avgTotalMs == null) {
+    return <span className="font-mono text-zinc-300 dark:text-zinc-600">—</span>;
+  }
+  const tone =
+    avgTotalMs <= 1500
+      ? "text-emerald-600 dark:text-emerald-400"
+      : avgTotalMs <= 2500
+        ? "text-amber-600 dark:text-amber-400"
+        : "text-rose-600 dark:text-rose-400";
+  return (
+    <span
+      className={`font-mono ${tone}`}
+      title={`avg over ${latencyMetrics!.summary.turnCount} turns (min ${latencyMetrics!.summary.minTotalMs}ms, max ${latencyMetrics!.summary.maxTotalMs}ms)`}
+    >
+      {(avgTotalMs / 1000).toFixed(1)}s
     </span>
   );
 }

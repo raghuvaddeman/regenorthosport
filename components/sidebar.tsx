@@ -7,7 +7,7 @@ import { useUser, useClerk } from "@clerk/nextjs";
 import {
   LayoutDashboard, PhoneCall, Users, Settings, Database,
   PhoneForwarded, FileText, BrainCircuit, ShieldAlert, Radio, Phone, CreditCard, Plug, Menu, X,
-  UserCog, PhoneOutgoing, MessagesSquare
+  UserCog, PhoneOutgoing, MessagesSquare, Gauge
 } from "lucide-react";
 
 type NavItem = {
@@ -56,6 +56,7 @@ const navigationData: { groupName: string; items: NavItem[] }[] = [
       { label: "Providers", href: "/dashboard/providers", icon: Plug },
       { label: "EHR / EMR Sync", href: "/dashboard/ehr-sync", icon: Radio, isBeta: true },
       { label: "Phone Numbers", href: "/dashboard/numbers", icon: Phone },
+      { label: "Call Performance", href: "/dashboard/performance", icon: Gauge },
       { label: "Billing & Usage", href: "/dashboard/billing", icon: CreditCard },
     ],
   },
