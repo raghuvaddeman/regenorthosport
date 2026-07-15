@@ -2,7 +2,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Play, Pause, X, Sparkles, Star } from "lucide-react";
+import { Play, Pause, X, Sparkles, Star, ChevronDown, Gauge } from "lucide-react";
 import type { Call } from "@/lib/use-calls";
 
 /* ------------------------------- Utilities ------------------------------ */
@@ -56,6 +56,7 @@ export function RatingBadge({ value }: { value: number }) {
 export function CallSlideOver({ call, onClose }: { call: Call; onClose: () => void }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [perfExpanded, setPerfExpanded] = useState(false);
 
   const toggle = () => {
     const a = audioRef.current;
@@ -125,6 +126,80 @@ export function CallSlideOver({ call, onClose }: { call: Call; onClose: () => vo
             {call.summary}
           </p>
         </div>
+
+        {call.latencyMetrics && (
+          <div className="border-b border-zinc-200 dark:border-zinc-600">
+            <button
+              type="button"
+              onClick={() => setPerfExpanded((v) => !v)}
+              className="flex w-full items-center justify-between gap-2 px-6 py-3 text-left"
+            >
+              <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">
+                <Gauge className="h-3.5 w-3.5" /> Performance
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
+                  avg {call.latencyMetrics.summary.avgTotalMs != null ? `${(call.latencyMetrics.summary.avgTotalMs / 1000).toFixed(1)}s` : "—"} ·{" "}
+                  {call.latencyMetrics.summary.turnCount} turns
+                </span>
+                <ChevronDown className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${perfExpanded ? "rotate-180" : ""}`} />
+              </div>
+            </button>
+            {perfExpanded && (
+              <div className="space-y-3 px-6 pb-4">
+                <div className="grid grid-cols-2 gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  <div>
+                    Model: <span className="font-mono text-zinc-700 dark:text-zinc-300">{call.latencyMetrics.config.llmModel}</span>
+                  </div>
+                  <div>
+                    STT/TTS:{" "}
+                    <span className="font-mono text-zinc-700 dark:text-zinc-300">
+                      {call.latencyMetrics.config.sttModel} / {call.latencyMetrics.config.ttsModel}
+                    </span>
+                  </div>
+                  <div>
+                    Endpointing:{" "}
+                    <span className="font-mono text-zinc-700 dark:text-zinc-300">
+                      {call.latencyMetrics.config.endpointingMinDelayMs}-{call.latencyMetrics.config.endpointingMaxDelayMs}ms
+                    </span>
+                  </div>
+                  <div>
+                    Min/max total:{" "}
+                    <span className="font-mono text-zinc-700 dark:text-zinc-300">
+                      {call.latencyMetrics.summary.minTotalMs}-{call.latencyMetrics.summary.maxTotalMs}ms
+                    </span>
+                  </div>
+                </div>
+                {call.latencyMetrics.perTurn.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-600">
+                    <table className="w-full text-left text-xs">
+                      <thead className="sticky top-0 bg-zinc-100 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400">
+                        <tr>
+                          <th className="px-2 py-1.5 font-medium">Turn</th>
+                          <th className="px-2 py-1.5 font-medium">EOU</th>
+                          <th className="px-2 py-1.5 font-medium">LLM</th>
+                          <th className="px-2 py-1.5 font-medium">TTS</th>
+                          <th className="px-2 py-1.5 font-medium">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 font-mono dark:divide-zinc-700">
+                        {call.latencyMetrics.perTurn.map((t, i) => (
+                          <tr key={t.speechId}>
+                            <td className="px-2 py-1 text-zinc-400">{i + 1}</td>
+                            <td className="px-2 py-1">{t.eouDelayMs}ms</td>
+                            <td className="px-2 py-1">{t.llmTtftMs}ms</td>
+                            <td className="px-2 py-1">{t.ttsTtfbMs}ms</td>
+                            <td className="px-2 py-1 font-semibold text-zinc-700 dark:text-zinc-300">{t.totalMs}ms</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 space-y-3 overflow-y-auto px-6 py-5">{turns}</div>
 

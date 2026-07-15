@@ -7,6 +7,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { CallLatencyMetrics } from "@/lib/observability/call-latency";
 
 export type Call = {
   uuid: string;
@@ -18,6 +19,7 @@ export type Call = {
   summary: string;
   rating: number; // 1–5, 0 when analysis hasn't arrived yet
   costInr: number; // estimated Gemini + Sarvam STT/TTS + LiveKit cost, in INR
+  latencyMetrics: CallLatencyMetrics | null; // null for calls made before this was tracked
   at: string; // ISO datetime
 };
 

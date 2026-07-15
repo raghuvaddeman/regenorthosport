@@ -21,6 +21,7 @@ import { EncodedFileOutput, EncodedFileType, S3Upload } from '@livekit/protocol'
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import type { CallUsage } from '../lib/pricing/call-cost';
+import type { CallLatencyMetrics, CallLatencyTurn } from '../lib/observability/call-latency';
 
 const FALLBACK_INSTRUCTIONS =
   'You are a friendly, helpful voice assistant answering phone calls for a healthcare practice. ' +
@@ -233,6 +234,7 @@ async function reportCallCost(payload: {
   recordingUrl: string | null;
   transcript: string | null;
   aiSummary: string | null;
+  latencyMetrics: CallLatencyMetrics;
 }) {
   const appUrl = process.env.APP_URL;
   const secret = process.env.INTERNAL_SECRET_KEY;
@@ -456,8 +458,11 @@ function attachLatencyLogging(
   );
 
   const turns = new Map<string, TurnLatency>();
-  const completedTotalsMs: number[] = [];
-  const completedTtftMs: number[] = [];
+  // The full per-turn record, kept alongside the console [LATENCY] lines —
+  // this is what actually gets persisted (see CallLatencyMetrics), so the
+  // dashboard can show the same breakdown without anyone needing to SSH in
+  // and grep PM2 logs.
+  const perTurn: CallLatencyTurn[] = [];
 
   let llmPromptTokens = 0;
   let llmCompletionTokens = 0;
@@ -470,8 +475,13 @@ function attachLatencyLogging(
     if (!t || t.eouDelayMs === undefined || t.llmTtftMs === undefined || t.ttsTtfbMs === undefined) return;
     const total = t.eouDelayMs + t.llmTtftMs + t.ttsTtfbMs;
     console.log(`[LATENCY] speech_id=${speechId} TOTAL=${Math.round(total)}ms`);
-    completedTotalsMs.push(total);
-    completedTtftMs.push(t.llmTtftMs);
+    perTurn.push({
+      speechId,
+      eouDelayMs: Math.round(t.eouDelayMs),
+      llmTtftMs: Math.round(t.llmTtftMs),
+      ttsTtfbMs: Math.round(t.ttsTtfbMs),
+      totalMs: Math.round(total),
+    });
     turns.delete(speechId);
   };
 
@@ -533,13 +543,35 @@ function attachLatencyLogging(
   });
 
   session.on(AgentSessionEventTypes.Close, () => {
-    if (completedTotalsMs.length > 0) {
-      const turnCount = completedTotalsMs.length;
-      const avg = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
+    const avg = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
+    const totals = perTurn.map((t) => t.totalMs);
+    const ttfts = perTurn.map((t) => t.llmTtftMs);
+
+    const latencyMetrics: CallLatencyMetrics = {
+      config: {
+        llmModel: activeConfig.llmModel,
+        sttModel: activeConfig.sttModel,
+        ttsModel: activeConfig.ttsModel,
+        thinkingBudget: activeConfig.thinkingBudget,
+        thinkingLevel: activeConfig.thinkingLevel,
+        endpointingMinDelayMs: activeConfig.endpointingMinDelayMs,
+        endpointingMaxDelayMs: activeConfig.endpointingMaxDelayMs,
+      },
+      summary: {
+        turnCount: perTurn.length,
+        avgTotalMs: totals.length ? Math.round(avg(totals)) : null,
+        minTotalMs: totals.length ? Math.round(Math.min(...totals)) : null,
+        maxTotalMs: totals.length ? Math.round(Math.max(...totals)) : null,
+        avgLlmTtftMs: ttfts.length ? Math.round(avg(ttfts)) : null,
+      },
+      perTurn,
+    };
+
+    if (perTurn.length > 0) {
       console.log(
-        `[LATENCY] SUMMARY turns=${turnCount} avg_total=${Math.round(avg(completedTotalsMs))}ms ` +
-          `min_total=${Math.round(Math.min(...completedTotalsMs))}ms max_total=${Math.round(Math.max(...completedTotalsMs))}ms ` +
-          `avg_llm_ttft=${Math.round(avg(completedTtftMs))}ms`
+        `[LATENCY] SUMMARY turns=${latencyMetrics.summary.turnCount} avg_total=${latencyMetrics.summary.avgTotalMs}ms ` +
+          `min_total=${latencyMetrics.summary.minTotalMs}ms max_total=${latencyMetrics.summary.maxTotalMs}ms ` +
+          `avg_llm_ttft=${latencyMetrics.summary.avgLlmTtftMs}ms`
       );
     }
 
@@ -570,6 +602,7 @@ function attachLatencyLogging(
         recordingUrl,
         transcript: artifacts.transcript,
         aiSummary: artifacts.aiSummary,
+        latencyMetrics,
         usage: {
           geminiModel: activeConfig.llmModel,
           llmPromptTokens: llmPromptTokens + artifacts.summaryPromptTokens,

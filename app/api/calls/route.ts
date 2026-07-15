@@ -23,6 +23,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isAuthorizedInternalRequest } from "@/lib/telephony/internal-auth";
 import { computeCallCost, type CallUsage } from "@/lib/pricing/call-cost";
+import type { CallLatencyMetrics } from "@/lib/observability/call-latency";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,7 @@ type DbCallRow = {
   call_date_time?: string | null;
   created_at?: string | null;
   total_cost_inr?: number | null;
+  latency_metrics?: CallLatencyMetrics | null;
 };
 
 function normalizeRow(row: DbCallRow) {
@@ -78,6 +80,7 @@ function normalizeRow(row: DbCallRow) {
     summary: row.summary ?? row.ai_summary ?? "",
     rating: Number(row.rating ?? row.ai_rating ?? 0),
     costInr: Number(row.total_cost_inr ?? 0),
+    latencyMetrics: row.latency_metrics ?? null,
     at:
       row.call_at ??
       row.call_date_time ??
@@ -176,6 +179,7 @@ export async function POST(request: NextRequest) {
       recordingUrl,
       transcript,
       aiSummary,
+      latencyMetrics,
     } = body as {
       clientId?: string;
       callUuid?: string;
@@ -186,6 +190,7 @@ export async function POST(request: NextRequest) {
       recordingUrl?: string | null;
       transcript?: string | null;
       aiSummary?: string | null;
+      latencyMetrics?: CallLatencyMetrics | null;
     };
 
     if (bodyClientId !== clientId) {
@@ -218,6 +223,7 @@ export async function POST(request: NextRequest) {
       recording_url: recordingUrl ?? null,
       transcript: transcript ?? null,
       ai_summary: aiSummary ?? null,
+      latency_metrics: latencyMetrics ?? null,
       llm_cost_inr: cost.llmCostInr,
       stt_cost_inr: cost.sttCostInr,
       tts_cost_inr: cost.ttsCostInr,
