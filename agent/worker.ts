@@ -15,7 +15,7 @@ import {
 import * as google from '@livekit/agents-plugin-google';
 import { EgressClient } from 'livekit-server-sdk';
 import { EncodedFileOutput, EncodedFileType, S3Upload } from '@livekit/protocol';
-import { GoogleGenAI, Modality } from '@google/genai';
+import { EndSensitivity, GoogleGenAI, Modality, StartSensitivity } from '@google/genai';
 import { z } from 'zod';
 import type { CallUsage } from '../lib/pricing/call-cost';
 
@@ -135,12 +135,15 @@ function buildRsvpTool(contactId: string) {
 //
 // realtimeModel/realtimeVoice: the live conversational model (STT+LLM+TTS
 // unified via Gemini's Live API), replacing the former Sarvam STT + Sarvam
-// TTS pipeline. 'gemini-3.1-flash-live-preview' is the 3.1 family's Live
-// counterpart to the pinned geminiModel above. Voice list and model names
-// verified against node_modules/@livekit/agents-plugin-google/dist/realtime/api_proto.d.ts.
+// TTS pipeline. Using 'gemini-2.5-flash-native-audio-preview-12-2025' instead
+// of the 3.1 live-preview model — independent reports (Google's own dev forum)
+// describe audio "stutter" specifically on newer native-audio preview models;
+// this is a more mature variant, worth testing before assuming anything else
+// is wrong. Voice list and model names verified against
+// node_modules/@livekit/agents-plugin-google/dist/realtime/api_proto.d.ts.
 const MODEL_DEFAULTS = {
   geminiModel: 'gemini-3.1-flash-lite',
-  realtimeModel: 'gemini-3.1-flash-live-preview',
+  realtimeModel: 'gemini-2.5-flash-native-audio-preview-12-2025',
   realtimeVoice: 'Kore',
 };
 
@@ -177,12 +180,24 @@ async function fetchProviderModels(): Promise<{ geminiModel: string }> {
 const GEMINI_THINKING_BUDGET = 0;
 const GEMINI_THINKING_LEVEL = 'MINIMAL';
 
-// realtimeInputConfig / automatic activity detection tuning (the Live API's
-// equivalent of the old STT-pipeline's turnHandling.endpointing) is intentionally
-// left at SDK defaults for now — the previous ENDPOINTING_MIN/MAX_DELAY_MS values
-// were tuned specifically for Sarvam's STT transcription delay and don't carry
-// over. Revisit only after watching real calls on the Live API, same as how
-// endpointing was originally tuned.
+// realtimeInputConfig.automaticActivityDetection is the Live API's own turn-
+// detection tuning (verified in node_modules/@google/genai/dist/node/*.d.ts) —
+// NOT a field on AgentSession/voice.AgentSession itself, and there is no
+// "server_vad" mode in this SDK. START/END_SENSITIVITY_LOW are already this
+// field's documented defaults; set explicitly here so the choice is visible
+// rather than implicit. silenceDurationMs is set to 600ms, directly mirroring
+// ENDPOINTING_MIN_DELAY_MS from the old pipeline — the value that was
+// specifically raised from 400ms after real test calls showed premature turn
+// commits and mid-sentence caller cut-offs. A pasted spec suggested 450ms with
+// no supporting evidence; going anywhere near the already-proven-too-aggressive
+// 400ms risks reproducing that exact bug. prefixPaddingMs=150 preserves the
+// caller's opening phonemes. Both are still UNVERIFIED against real Live API
+// call behavior (a different detector than the old STT pipeline's) — revisit
+// after test calls, same discipline as before.
+const VAD_START_SENSITIVITY = StartSensitivity.START_SENSITIVITY_LOW;
+const VAD_END_SENSITIVITY = EndSensitivity.END_SENSITIVITY_LOW;
+const VAD_PREFIX_PADDING_MS = 150;
+const VAD_SILENCE_DURATION_MS = 600;
 
 // A/B testing knob: overrides the dashboard-configured realtime model when set, so
 // future model swaps for a test batch don't require touching the Providers page.
@@ -437,7 +452,9 @@ function attachLatencyLogging(
 ) {
   console.log(
     `[LATENCY] config realtime_model=${activeConfig.realtimeModel} ` +
-      `thinking_budget=${activeConfig.thinkingBudget} thinking_level=${activeConfig.thinkingLevel}`
+      `thinking_budget=${activeConfig.thinkingBudget} thinking_level=${activeConfig.thinkingLevel} ` +
+      `vad_start_sensitivity=${VAD_START_SENSITIVITY} vad_end_sensitivity=${VAD_END_SENSITIVITY} ` +
+      `vad_prefix_padding=${VAD_PREFIX_PADDING_MS}ms vad_silence_duration=${VAD_SILENCE_DURATION_MS}ms`
   );
 
   const completedTtftMs: number[] = [];
@@ -549,6 +566,14 @@ export default defineAgent({
         inputAudioTranscription: { languageCodes: ['en', 'hi', 'te', 'mr', 'bn', 'gu'] },
         outputAudioTranscription: { languageCodes: ['en', 'hi', 'te', 'mr', 'bn', 'gu'] },
         thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET, thinkingLevel: GEMINI_THINKING_LEVEL as any },
+        realtimeInputConfig: {
+          automaticActivityDetection: {
+            startOfSpeechSensitivity: VAD_START_SENSITIVITY,
+            endOfSpeechSensitivity: VAD_END_SENSITIVITY,
+            prefixPaddingMs: VAD_PREFIX_PADDING_MS,
+            silenceDurationMs: VAD_SILENCE_DURATION_MS,
+          },
+        },
       }),
     });
 
