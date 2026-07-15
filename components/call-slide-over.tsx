@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { Play, Pause, X, Sparkles, Star, ChevronDown, Gauge } from "lucide-react";
 import type { Call } from "@/lib/use-calls";
 import type { CallLatencyMetrics } from "@/lib/observability/call-latency";
-import type { SentimentLabel } from "@/lib/sentiment";
+import type { SentimentLabel } from "@/lib/call-classification";
 
 /* ------------------------------- Utilities ------------------------------ */
 
@@ -87,6 +87,19 @@ export function SentimentBadge({ sentiment }: { sentiment: SentimentLabel | null
       className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize ${SENTIMENT_STYLES[sentiment]}`}
     >
       {sentiment}
+    </span>
+  );
+}
+
+/** Plain neutral-styled pill for the higher-cardinality classifications (language/intent/outcome) — too many
+ * distinct values for per-category colors to stay meaningful, unlike sentiment's fixed 5. */
+export function TagPill({ value }: { value: string | null }) {
+  if (!value) {
+    return <span className="text-zinc-300 dark:text-zinc-600">—</span>;
+  }
+  return (
+    <span className="inline-flex items-center rounded-md border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-medium capitalize text-zinc-600 dark:border-zinc-600 dark:bg-zinc-700/50 dark:text-zinc-300">
+      {value.replaceAll("_", " ")}
     </span>
   );
 }

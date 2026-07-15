@@ -24,7 +24,16 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isAuthorizedInternalRequest } from "@/lib/telephony/internal-auth";
 import { computeCallCost, type CallUsage } from "@/lib/pricing/call-cost";
 import type { CallLatencyMetrics } from "@/lib/observability/call-latency";
-import { isSentimentLabel, type SentimentLabel } from "@/lib/sentiment";
+import {
+  isSentimentLabel,
+  isCallLanguage,
+  isCallIntent,
+  isCallOutcome,
+  type SentimentLabel,
+  type CallLanguage,
+  type CallIntent,
+  type CallOutcome,
+} from "@/lib/call-classification";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +70,9 @@ type DbCallRow = {
   summary?: string | null;
   ai_summary?: string | null;
   sentiment?: string | null;
+  call_language?: string | null;
+  call_intent?: string | null;
+  call_outcome?: string | null;
   rating?: number | null;
   ai_rating?: number | null;
   call_at?: string | null;
@@ -88,6 +100,9 @@ function normalizeRow(row: DbCallRow) {
     transcript: row.transcript ?? "",
     summary: row.summary ?? row.ai_summary ?? "",
     sentiment: isSentimentLabel(row.sentiment) ? row.sentiment : null,
+    callLanguage: isCallLanguage(row.call_language) ? row.call_language : null,
+    callIntent: isCallIntent(row.call_intent) ? row.call_intent : null,
+    callOutcome: isCallOutcome(row.call_outcome) ? row.call_outcome : null,
     rating: Number(row.rating ?? row.ai_rating ?? 0),
     costInr: Number(row.total_cost_inr ?? 0),
     llmCostInr: Number(row.llm_cost_inr ?? 0),
@@ -195,6 +210,9 @@ export async function POST(request: NextRequest) {
       transcript,
       aiSummary,
       sentiment,
+      callLanguage,
+      callIntent,
+      callOutcome,
       latencyMetrics,
     } = body as {
       clientId?: string;
@@ -208,6 +226,9 @@ export async function POST(request: NextRequest) {
       transcript?: string | null;
       aiSummary?: string | null;
       sentiment?: SentimentLabel | null;
+      callLanguage?: CallLanguage | null;
+      callIntent?: CallIntent | null;
+      callOutcome?: CallOutcome | null;
       latencyMetrics?: CallLatencyMetrics | null;
     };
 
@@ -243,6 +264,9 @@ export async function POST(request: NextRequest) {
       transcript: transcript ?? null,
       ai_summary: aiSummary ?? null,
       sentiment: sentiment ?? null,
+      call_language: callLanguage ?? null,
+      call_intent: callIntent ?? null,
+      call_outcome: callOutcome ?? null,
       latency_metrics: latencyMetrics ?? null,
       llm_cost_inr: cost.llmCostInr,
       stt_cost_inr: cost.sttCostInr,

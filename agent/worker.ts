@@ -251,6 +251,9 @@ async function reportCallCost(payload: {
   transcript: string | null;
   aiSummary: string | null;
   sentiment: SentimentLabel | null;
+  callLanguage: CallLanguage | null;
+  callIntent: CallIntent | null;
+  callOutcome: CallOutcome | null;
   latencyMetrics: CallLatencyMetrics;
 }) {
   const appUrl = process.env.APP_URL;
@@ -365,44 +368,81 @@ const TRANSLATE_PROMPT_PREFIX =
   '- Do not add commentary, headers, or anything else — output only the transcript lines.\n\n' +
   'Transcript:\n';
 
+// Keep these four lists in sync with lib/call-classification.ts, the frontend/API's
+// copy of the same categories.
 const SENTIMENT_LABELS = ['neutral', 'anxious', 'frustrated', 'curious', 'satisfied'] as const;
 type SentimentLabel = (typeof SENTIMENT_LABELS)[number];
 
+const CALL_LANGUAGES = ['mixed', 'english', 'hindi', 'telugu', 'marathi', 'kannada'] as const;
+type CallLanguage = (typeof CALL_LANGUAGES)[number];
+
+const CALL_INTENTS = [
+  'appointment', 'knee_pain', 'follow_up', 'neck_pain', 'other',
+  'back_pain', 'general_inquiry', 'hip_pain', 'shoulder_pain', 'pricing', 'location',
+] as const;
+type CallIntent = (typeof CALL_INTENTS)[number];
+
+const CALL_OUTCOMES = [
+  'booked', 'info_shared', 'callback_promised', 'appointment', 'call_dropped', 'other', 'no_answer',
+] as const;
+type CallOutcome = (typeof CALL_OUTCOMES)[number];
+
+// Runs against the RAW (pre-translation) transcript, not the translated one — language
+// detection needs to see the caller's actual words, which the translation step (above)
+// deliberately erases. Summary/intent/outcome are asked to come back in English regardless.
 const SUMMARY_PROMPT_PREFIX =
-  'Analyze this healthcare-practice phone call for a front-desk dashboard.\n\n' +
+  'Analyze this healthcare-practice phone call for a front-desk dashboard. The transcript below may be ' +
+  'in Hindi, Telugu, or other Indian languages, or phonetically transliterated into English/Latin script. ' +
+  'Return all text fields in English regardless of the transcript\'s language.\n\n' +
   '1. summary: 2-4 sentences covering the caller\'s stated reason for calling, any action taken or ' +
   'promised (e.g. appointment request logged, callback promised), and any follow-up needed. Concise ' +
   'and factual, no preamble.\n' +
-  `2. sentiment: the caller's dominant emotional state during the call, exactly one of: ${SENTIMENT_LABELS.join(', ')}.\n\n` +
+  `2. sentiment: the caller's dominant emotional state during the call, exactly one of: ${SENTIMENT_LABELS.join(', ')}.\n` +
+  `3. language: the dominant language(s) the caller actually spoke, exactly one of: ${CALL_LANGUAGES.join(', ')} ` +
+  '("mixed" if the caller switched between languages/English mid-call).\n' +
+  `4. intent: the caller's primary reason for calling, exactly one of: ${CALL_INTENTS.join(', ')}.\n` +
+  `5. outcome: how the call concluded, exactly one of: ${CALL_OUTCOMES.join(', ')}.\n\n` +
   'Transcript:\n';
 
-const SUMMARY_RESPONSE_SCHEMA = {
+const CLASSIFICATION_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     summary: { type: Type.STRING },
     sentiment: { type: Type.STRING, enum: [...SENTIMENT_LABELS] },
+    language: { type: Type.STRING, enum: [...CALL_LANGUAGES] },
+    intent: { type: Type.STRING, enum: [...CALL_INTENTS] },
+    outcome: { type: Type.STRING, enum: [...CALL_OUTCOMES] },
   },
-  required: ['summary', 'sentiment'],
+  required: ['summary', 'sentiment', 'language', 'intent', 'outcome'],
+};
+
+type ClassificationResult = {
+  transcript: string | null;
+  aiSummary: string | null;
+  sentiment: SentimentLabel | null;
+  callLanguage: CallLanguage | null;
+  callIntent: CallIntent | null;
+  callOutcome: CallOutcome | null;
+  summaryPromptTokens: number;
+  summaryCompletionTokens: number;
 };
 
 /**
- * Extracts a speaker-attributed transcript from the session's chat history, translates
- * it to clean English, and asks Gemini for a short summary. The "Agent: "/"Caller: "
- * line prefixes are required by the dashboard's transcript parser
- * (app/(portal)/dashboard/page.tsx). Extraction, translation, and summary are each
- * best-effort — a failure at any stage never blocks the cost report, and translation
- * failure falls back to the raw (possibly non-English) transcript rather than losing it.
+ * Extracts a speaker-attributed transcript from the session's chat history, then runs
+ * two independent Gemini calls in parallel against it: one translates it to clean
+ * English for storage, the other classifies it (summary/sentiment/language/intent/
+ * outcome) in a single structured-output call. Both run against the RAW transcript,
+ * not each other's output — classification needs the caller's original words to detect
+ * language, which translation deliberately erases. The "Agent: "/"Caller: " line
+ * prefixes are required by the dashboard's transcript parser
+ * (app/(portal)/dashboard/page.tsx). Each step is best-effort — a failure in either
+ * never blocks the cost report, and a failed translation falls back to the raw
+ * (possibly non-English) transcript rather than losing it.
  */
 async function buildTranscriptAndSummary(
   session: voice.AgentSession,
   geminiModel: string
-): Promise<{
-  transcript: string | null;
-  aiSummary: string | null;
-  sentiment: SentimentLabel | null;
-  summaryPromptTokens: number;
-  summaryCompletionTokens: number;
-}> {
+): Promise<ClassificationResult> {
   console.log(
     '[RECORDING] session.history.items:',
     session.history.items.length,
@@ -418,53 +458,78 @@ async function buildTranscriptAndSummary(
   console.log('[RECORDING] Extracted transcript length:', rawTranscript.length, 'chars');
 
   const apiKey = process.env.GEMINI_API_KEY;
+  const empty: ClassificationResult = {
+    transcript: rawTranscript || null,
+    aiSummary: null,
+    sentiment: null,
+    callLanguage: null,
+    callIntent: null,
+    callOutcome: null,
+    summaryPromptTokens: 0,
+    summaryCompletionTokens: 0,
+  };
   if (!rawTranscript || !apiKey) {
-    console.warn('[RECORDING] Skipping translation/summary: transcript or GEMINI_API_KEY missing.', {
+    console.warn('[RECORDING] Skipping translation/classification: transcript or GEMINI_API_KEY missing.', {
       transcriptLength: rawTranscript.length,
       hasApiKey: !!apiKey,
     });
-    return { transcript: rawTranscript || null, aiSummary: null, sentiment: null, summaryPromptTokens: 0, summaryCompletionTokens: 0 };
+    return empty;
   }
 
   const genai = new GoogleGenAI({ apiKey });
+
+  const [translateResult, classifyResult] = await Promise.allSettled([
+    genai.models.generateContent({
+      model: geminiModel,
+      contents: [{ role: 'user', parts: [{ text: TRANSLATE_PROMPT_PREFIX + rawTranscript }] }],
+    }),
+    genai.models.generateContent({
+      model: geminiModel,
+      contents: [{ role: 'user', parts: [{ text: SUMMARY_PROMPT_PREFIX + rawTranscript }] }],
+      config: { responseMimeType: 'application/json', responseSchema: CLASSIFICATION_RESPONSE_SCHEMA },
+    }),
+  ]);
+
   let transcript = rawTranscript;
   let promptTokens = 0;
   let completionTokens = 0;
-
-  try {
-    const translateResp = await genai.models.generateContent({
-      model: geminiModel,
-      contents: [{ role: 'user', parts: [{ text: TRANSLATE_PROMPT_PREFIX + rawTranscript }] }],
-    });
-    if (translateResp.text) transcript = translateResp.text;
-    promptTokens += translateResp.usageMetadata?.promptTokenCount ?? 0;
-    completionTokens += translateResp.usageMetadata?.candidatesTokenCount ?? 0;
+  if (translateResult.status === 'fulfilled') {
+    if (translateResult.value.text) transcript = translateResult.value.text;
+    promptTokens += translateResult.value.usageMetadata?.promptTokenCount ?? 0;
+    completionTokens += translateResult.value.usageMetadata?.candidatesTokenCount ?? 0;
     console.log('[RECORDING] Transcript translated, length:', transcript.length, 'chars');
-  } catch (err: any) {
-    console.warn('[RECORDING] Transcript translation failed, using raw transcript:', err.message);
+  } else {
+    console.warn('[RECORDING] Transcript translation failed, using raw transcript:', translateResult.reason?.message);
   }
 
-  try {
-    const summaryResp = await genai.models.generateContent({
-      model: geminiModel,
-      contents: [{ role: 'user', parts: [{ text: SUMMARY_PROMPT_PREFIX + transcript }] }],
-      config: { responseMimeType: 'application/json', responseSchema: SUMMARY_RESPONSE_SCHEMA },
-    });
-    const parsed = summaryResp.text ? JSON.parse(summaryResp.text) : null;
-    const sentiment: SentimentLabel | null =
-      parsed && SENTIMENT_LABELS.includes(parsed.sentiment) ? parsed.sentiment : null;
-    console.log('[RECORDING] AI summary generated:', parsed?.summary ?? '(empty)', 'sentiment:', sentiment ?? '(none)');
-    return {
-      transcript,
-      aiSummary: parsed?.summary ?? null,
-      sentiment,
-      summaryPromptTokens: promptTokens + (summaryResp.usageMetadata?.promptTokenCount ?? 0),
-      summaryCompletionTokens: completionTokens + (summaryResp.usageMetadata?.candidatesTokenCount ?? 0),
-    };
-  } catch (err: any) {
-    console.warn('[RECORDING] AI summary generation failed:', err.message);
-    return { transcript, aiSummary: null, sentiment: null, summaryPromptTokens: promptTokens, summaryCompletionTokens: completionTokens };
+  let aiSummary: string | null = null;
+  let sentiment: SentimentLabel | null = null;
+  let callLanguage: CallLanguage | null = null;
+  let callIntent: CallIntent | null = null;
+  let callOutcome: CallOutcome | null = null;
+  if (classifyResult.status === 'fulfilled') {
+    try {
+      const parsed = classifyResult.value.text ? JSON.parse(classifyResult.value.text) : null;
+      aiSummary = parsed?.summary ?? null;
+      sentiment = parsed && SENTIMENT_LABELS.includes(parsed.sentiment) ? parsed.sentiment : null;
+      callLanguage = parsed && CALL_LANGUAGES.includes(parsed.language) ? parsed.language : null;
+      callIntent = parsed && CALL_INTENTS.includes(parsed.intent) ? parsed.intent : null;
+      callOutcome = parsed && CALL_OUTCOMES.includes(parsed.outcome) ? parsed.outcome : null;
+      promptTokens += classifyResult.value.usageMetadata?.promptTokenCount ?? 0;
+      completionTokens += classifyResult.value.usageMetadata?.candidatesTokenCount ?? 0;
+      console.log(
+        '[RECORDING] AI classification:', aiSummary ?? '(empty)',
+        'sentiment:', sentiment ?? '(none)', 'language:', callLanguage ?? '(none)',
+        'intent:', callIntent ?? '(none)', 'outcome:', callOutcome ?? '(none)'
+      );
+    } catch (err: any) {
+      console.warn('[RECORDING] Classification response parse failed:', err.message);
+    }
+  } else {
+    console.warn('[RECORDING] AI classification failed:', classifyResult.reason?.message);
   }
+
+  return { transcript, aiSummary, sentiment, callLanguage, callIntent, callOutcome, summaryPromptTokens: promptTokens, summaryCompletionTokens: completionTokens };
 }
 
 type TurnLatency = { eouDelayMs?: number; llmTtftMs?: number; ttsTtfbMs?: number };
@@ -627,12 +692,15 @@ function attachLatencyLogging(
     void (async () => {
       const [recordingUrl, artifacts] = await Promise.all([
         stopEgressAndGetUrl(activeConfig.egressClient, activeConfig.callInfo.egressId, activeConfig.callUuid),
-        // 18s, not 10s: this now makes two sequential Gemini calls (translate, then
-        // summarize) instead of one.
-        withTimeout(buildTranscriptAndSummary(session, activeConfig.llmModel), 18_000, {
+        // Translate + classify now run in parallel (not sequential), so 12s covers
+        // one round-trip with margin rather than two.
+        withTimeout(buildTranscriptAndSummary(session, activeConfig.llmModel), 12_000, {
           transcript: null,
           aiSummary: null,
           sentiment: null,
+          callLanguage: null,
+          callIntent: null,
+          callOutcome: null,
           summaryPromptTokens: 0,
           summaryCompletionTokens: 0,
         }),
@@ -648,6 +716,9 @@ function attachLatencyLogging(
         transcript: artifacts.transcript,
         aiSummary: artifacts.aiSummary,
         sentiment: artifacts.sentiment,
+        callLanguage: artifacts.callLanguage,
+        callIntent: artifacts.callIntent,
+        callOutcome: artifacts.callOutcome,
         latencyMetrics,
         usage: {
           geminiModel: activeConfig.llmModel,

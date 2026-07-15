@@ -3,10 +3,10 @@
 import { useMemo, useState } from "react";
 import { BrainCircuit, Smile, PhoneCall } from "lucide-react";
 import { useCallsContext } from "@/lib/calls-context";
-import { CallSlideOver, SentimentBadge } from "@/components/call-slide-over";
+import { CallSlideOver, SentimentBadge, TagPill } from "@/components/call-slide-over";
 import { TimeRangeFilter } from "@/components/time-range-filter";
 import { filterByRange, type TimeRange } from "@/lib/time-range";
-import { SENTIMENT_LABELS, type SentimentLabel } from "@/lib/sentiment";
+import { SENTIMENT_LABELS, type SentimentLabel } from "@/lib/call-classification";
 import type { Call } from "@/lib/use-calls";
 
 const SENTIMENT_BAR_COLORS: Record<SentimentLabel, string> = {
@@ -132,19 +132,22 @@ export default function SentimentPage() {
                 <th className="p-4 font-medium">Timestamp</th>
                 <th className="p-4 font-medium">Customer Phone</th>
                 <th className="p-4 font-medium">Sentiment</th>
+                <th className="p-4 font-medium">Language</th>
+                <th className="p-4 font-medium">Intent</th>
+                <th className="p-4 font-medium">Outcome</th>
                 <th className="p-4 font-medium">AI Insight Summary</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-600">
               {loading && scoped.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-8 text-center text-zinc-400 animate-pulse">
+                  <td colSpan={7} className="p-8 text-center text-zinc-400 animate-pulse">
                     Loading sentiment data…
                   </td>
                 </tr>
               ) : scoped.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-8 text-center text-zinc-400">No calls in this range.</td>
+                  <td colSpan={7} className="p-8 text-center text-zinc-400">No calls in this range.</td>
                 </tr>
               ) : (
                 scoped.map((c) => (
@@ -157,6 +160,15 @@ export default function SentimentPage() {
                     <td className="p-4 font-mono">{c.phone || "Anonymous"}</td>
                     <td className="p-4">
                       <SentimentBadge sentiment={c.sentiment} />
+                    </td>
+                    <td className="p-4">
+                      <TagPill value={c.callLanguage} />
+                    </td>
+                    <td className="p-4">
+                      <TagPill value={c.callIntent} />
+                    </td>
+                    <td className="p-4">
+                      <TagPill value={c.callOutcome} />
                     </td>
                     <td className="p-4 max-w-md truncate text-zinc-600 dark:text-zinc-400" title={c.summary}>{c.summary}</td>
                   </tr>
