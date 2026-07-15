@@ -22,7 +22,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isAuthorizedInternalRequest } from "@/lib/telephony/internal-auth";
-import { computeCallCost, type CallUsage } from "@/lib/pricing/call-cost";
+import { computeCallCost, computeClassificationCostInr, type CallUsage } from "@/lib/pricing/call-cost";
 import type { CallLatencyMetrics } from "@/lib/observability/call-latency";
 import {
   isSentimentLabel,
@@ -214,6 +214,8 @@ export async function POST(request: NextRequest) {
       callIntent,
       callOutcome,
       latencyMetrics,
+      classificationPromptTokens,
+      classificationCompletionTokens,
     } = body as {
       clientId?: string;
       callUuid?: string;
@@ -230,6 +232,8 @@ export async function POST(request: NextRequest) {
       callIntent?: CallIntent | null;
       callOutcome?: CallOutcome | null;
       latencyMetrics?: CallLatencyMetrics | null;
+      classificationPromptTokens?: number;
+      classificationCompletionTokens?: number;
     };
 
     if (bodyClientId !== clientId) {
@@ -246,6 +250,16 @@ export async function POST(request: NextRequest) {
     }
 
     const cost = computeCallCost(usage);
+    // Post-call translation/classification always runs on a fixed Gemini model
+    // (see computeClassificationCostInr) regardless of which pipeline drove the
+    // live call — folded into the llm cost bucket rather than tracked separately,
+    // since the dashboard's cost breakdown has no dedicated category for it.
+    const classificationCostInr = computeClassificationCostInr(
+      classificationPromptTokens ?? 0,
+      classificationCompletionTokens ?? 0
+    );
+    const llmCostInr = cost.llmCostInr + classificationCostInr;
+    const totalCostInr = cost.totalCostInr + classificationCostInr;
 
     const supabase = getSupabaseAdmin();
     const table = process.env.SUPABASE_CALLS_TABLE ?? "calls";
@@ -255,10 +269,10 @@ export async function POST(request: NextRequest) {
       customer_phone: customerPhone ?? "",
       call_direction: callDirection ?? null,
       duration_sec: durationSec ?? usage.callDurationSec,
-      llm_prompt_tokens: usage.llmPromptTokens,
-      llm_completion_tokens: usage.llmCompletionTokens,
-      stt_audio_duration_ms: usage.sttAudioDurationMs,
-      tts_characters_count: usage.ttsCharactersCount,
+      llm_prompt_tokens: usage.kind === "standard" ? usage.llmPromptTokens : 0,
+      llm_completion_tokens: usage.kind === "standard" ? usage.llmCompletionTokens : 0,
+      stt_audio_duration_ms: usage.kind === "standard" ? usage.sttAudioDurationMs : 0,
+      tts_characters_count: usage.kind === "standard" ? usage.ttsCharactersCount : 0,
       tts_audio_duration_ms: ttsAudioDurationMs ?? null,
       recording_url: recordingUrl ?? null,
       transcript: transcript ?? null,
@@ -268,11 +282,11 @@ export async function POST(request: NextRequest) {
       call_intent: callIntent ?? null,
       call_outcome: callOutcome ?? null,
       latency_metrics: latencyMetrics ?? null,
-      llm_cost_inr: cost.llmCostInr,
+      llm_cost_inr: llmCostInr,
       stt_cost_inr: cost.sttCostInr,
       tts_cost_inr: cost.ttsCostInr,
       livekit_cost_inr: cost.livekitCostInr,
-      total_cost_inr: cost.totalCostInr,
+      total_cost_inr: totalCostInr,
       pricing_version: cost.pricingVersion,
       created_at: new Date().toISOString(),
     });

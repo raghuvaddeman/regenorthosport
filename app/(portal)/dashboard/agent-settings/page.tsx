@@ -32,7 +32,15 @@ import {
   Circle,
   Copy,
   Check,
+  Waypoints,
 } from "lucide-react";
+import {
+  VOICE_PIPELINES,
+  VOICE_PIPELINE_INFO,
+  DEFAULT_VOICE_PIPELINE,
+  isVoicePipeline,
+  type VoicePipeline,
+} from "@/lib/voice-pipeline";
 
 /* --------------------------------- Tabs --------------------------------- */
 
@@ -663,6 +671,7 @@ export default function AgentSettingsPage() {
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [outboundSystemPrompt, setOutboundSystemPrompt] = useState("");
   const [agentName, setAgentName] = useState("Priya");
+  const [voicePipeline, setVoicePipeline] = useState<VoicePipeline>(DEFAULT_VOICE_PIPELINE);
   const [loadingAgentSettings, setLoadingAgentSettings] = useState(true);
 
   useEffect(() => {
@@ -675,6 +684,7 @@ export default function AgentSettingsPage() {
           setWelcomeMessage(json.data.welcomeMessage);
           setSystemPrompt(json.data.systemPrompt);
           setOutboundSystemPrompt(json.data.outboundSystemPrompt ?? "");
+          setVoicePipeline(isVoicePipeline(json.data.voicePipeline) ? json.data.voicePipeline : DEFAULT_VOICE_PIPELINE);
         }
       } catch {
         // leave the built-in defaults in place
@@ -760,7 +770,7 @@ export default function AgentSettingsPage() {
       const res = await fetch("/api/agent-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt }),
+        body: JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, voicePipeline }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to save.");
@@ -849,6 +859,39 @@ export default function AgentSettingsPage() {
                 onChange={(e) => setWelcomeMessage(e.target.value)}
               />
             </Field>
+          </SectionCard>
+
+          <SectionCard
+            title="Voice Pipeline"
+            description="Which speech-to-text/LLM/text-to-speech stack handles calls. Switch to compare quality, latency, and cost for your business — test with a real call before relying on a new option."
+          >
+            <div className="grid gap-3 sm:grid-cols-3">
+              {VOICE_PIPELINES.map((pipeline) => {
+                const info = VOICE_PIPELINE_INFO[pipeline];
+                const selected = voicePipeline === pipeline;
+                return (
+                  <button
+                    key={pipeline}
+                    type="button"
+                    onClick={() => setVoicePipeline(pipeline)}
+                    className={`flex flex-col items-start gap-1.5 rounded-lg border p-3.5 text-left transition-colors ${
+                      selected
+                        ? "border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-500/10"
+                        : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-600 dark:hover:border-zinc-500"
+                    }`}
+                  >
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 text-sm font-semibold">
+                        <Waypoints className={`h-3.5 w-3.5 ${selected ? "text-brand-600 dark:text-brand-400" : "text-zinc-400"}`} />
+                        {info.label}
+                      </span>
+                      {selected && <Check className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />}
+                    </div>
+                    <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">{info.description}</p>
+                  </button>
+                );
+              })}
+            </div>
           </SectionCard>
 
           <SectionCard

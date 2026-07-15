@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isAuthorizedInternalRequest } from "@/lib/telephony/internal-auth";
+import { DEFAULT_VOICE_PIPELINE, isVoicePipeline } from "@/lib/voice-pipeline";
 
 // Tenant (client_id) is derived from the signed-in Clerk session on the
 // server for dashboard requests — same pattern as /api/providers, /api/calls.
@@ -378,7 +379,7 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("agent_settings")
-      .select("agent_name, welcome_message, system_prompt, outbound_system_prompt")
+      .select("agent_name, welcome_message, system_prompt, outbound_system_prompt, voice_pipeline")
       .eq("client_id", clientId)
       .maybeSingle();
 
@@ -394,6 +395,7 @@ export async function GET(request: NextRequest) {
         // "fall back to the inbound prompt", decided where the call actually
         // happens (agent/worker.ts), not baked in here.
         outboundSystemPrompt: data?.outbound_system_prompt ?? "",
+        voicePipeline: isVoicePipeline(data?.voice_pipeline) ? data.voice_pipeline : DEFAULT_VOICE_PIPELINE,
       },
     });
   } catch (error: any) {
@@ -413,7 +415,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { agentName, welcomeMessage, systemPrompt, outboundSystemPrompt } = body;
+    const { agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, voicePipeline } = body;
 
     if (
       typeof agentName !== "string" ||
@@ -437,6 +439,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (voicePipeline !== undefined && !isVoicePipeline(voicePipeline)) {
+      return NextResponse.json({ success: false, error: "Invalid voicePipeline." }, { status: 400 });
+    }
+
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("agent_settings").upsert(
       {
@@ -445,6 +451,7 @@ export async function POST(request: NextRequest) {
         welcome_message: welcomeMessage,
         system_prompt: systemPrompt,
         outbound_system_prompt: outboundSystemPrompt?.trim() || null,
+        voice_pipeline: voicePipeline ?? DEFAULT_VOICE_PIPELINE,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "client_id" }

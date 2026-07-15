@@ -1,0 +1,29 @@
+// lib/voice-pipeline.ts
+// The three voice-pipeline configurations agent/worker.ts can run, selected
+// per-tenant via agent_settings.voice_pipeline. Keep in sync with the branch
+// in worker.ts's entrypoint that constructs the AgentSession for each.
+
+export const VOICE_PIPELINES = ["gemini_sarvam", "gemini_native", "openai_full"] as const;
+export type VoicePipeline = (typeof VOICE_PIPELINES)[number];
+
+export const VOICE_PIPELINE_INFO: Record<VoicePipeline, { label: string; description: string }> = {
+  gemini_sarvam: {
+    label: "Gemini + Sarvam (current)",
+    description: "Gemini LLM with Sarvam speech-to-text and text-to-speech. Best Indian-language support, in production today.",
+  },
+  gemini_native: {
+    label: "Gemini Native Audio",
+    description:
+      "Gemini's single realtime audio model handles listening and speaking together, instead of separate STT/TTS steps. Lower latency in theory, but Indian-language/accent quality is unverified — test before relying on it for real patients.",
+  },
+  openai_full: {
+    label: "OpenAI (Whisper + GPT + TTS)",
+    description: "OpenAI Whisper for speech-to-text, GPT for the LLM, and OpenAI TTS for the voice — a fully separate stack from Gemini/Sarvam.",
+  },
+};
+
+export function isVoicePipeline(value: unknown): value is VoicePipeline {
+  return typeof value === "string" && (VOICE_PIPELINES as readonly string[]).includes(value);
+}
+
+export const DEFAULT_VOICE_PIPELINE: VoicePipeline = "gemini_sarvam";

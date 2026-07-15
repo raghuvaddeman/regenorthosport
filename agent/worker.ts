@@ -15,6 +15,7 @@ import {
 } from '@livekit/agents';
 import * as google from '@livekit/agents-plugin-google';
 import * as sarvam from '@livekit/agents-plugin-sarvam';
+import * as openai from '@livekit/agents-plugin-openai';
 import * as silero from '@livekit/agents-plugin-silero';
 import { EgressClient } from 'livekit-server-sdk';
 import { EncodedFileOutput, EncodedFileType, S3Upload } from '@livekit/protocol';
@@ -22,6 +23,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { z } from 'zod';
 import type { CallUsage } from '../lib/pricing/call-cost';
 import type { CallLatencyMetrics, CallLatencyTurn } from '../lib/observability/call-latency';
+import { DEFAULT_VOICE_PIPELINE, isVoicePipeline, type VoicePipeline } from '../lib/voice-pipeline';
 
 const FALLBACK_INSTRUCTIONS =
   'You are a friendly, helpful voice assistant answering phone calls for a healthcare practice. ' +
@@ -32,6 +34,7 @@ async function fetchAgentSettings(): Promise<{
   welcomeMessage: string;
   systemPrompt: string;
   outboundSystemPrompt: string;
+  voicePipeline: VoicePipeline;
 } | null> {
   const appUrl = process.env.APP_URL;
   const secret = process.env.INTERNAL_SECRET_KEY;
@@ -47,7 +50,11 @@ async function fetchAgentSettings(): Promise<{
     });
     if (!res.ok) return null;
     const json = await res.json();
-    return json.success ? json.data : null;
+    if (!json.success) return null;
+    return {
+      ...json.data,
+      voicePipeline: isVoicePipeline(json.data?.voicePipeline) ? json.data.voicePipeline : DEFAULT_VOICE_PIPELINE,
+    };
   } catch (err: any) {
     console.warn('Agent settings fetch failed:', err.message);
     return null;
@@ -154,6 +161,20 @@ const MODEL_DEFAULTS = {
   ttsVoice: 'anushka',
 };
 
+// Fixed defaults for the two alternate voice pipelines (lib/voice-pipeline.ts) — not
+// tenant-configurable yet (see the "simple 3-way switch" scope for this feature).
+// Pricing for both is in lib/pricing/call-cost.ts, keyed by these exact model names.
+const OPENAI_PIPELINE_DEFAULTS = {
+  llmModel: 'gpt-5-mini',
+  sttModel: 'whisper-1',
+  ttsModel: 'tts-1',
+  ttsVoice: 'alloy',
+};
+const GEMINI_LIVE_PIPELINE_DEFAULTS = {
+  model: 'gemini-3.1-flash-live-preview',
+  voice: 'Puck',
+};
+
 /** Fetches the tenant's chosen LLM/STT/TTS models and TTS voice from the Providers page, falling back to defaults. */
 async function fetchProviderModels(): Promise<typeof MODEL_DEFAULTS> {
   const appUrl = process.env.APP_URL;
@@ -247,6 +268,12 @@ async function reportCallCost(payload: {
   durationSec: number;
   ttsAudioDurationMs: number;
   usage: CallUsage;
+  // Translation/classification (buildTranscriptAndSummary) always runs on a fixed
+  // Gemini model regardless of which pipeline drove the live call — tracked
+  // separately from `usage` so they're priced at the Gemini rate, not whatever
+  // rate `usage.llmModel` implies (which varies by pipeline).
+  classificationPromptTokens: number;
+  classificationCompletionTokens: number;
   recordingUrl: string | null;
   transcript: string | null;
   aiSummary: string | null;
@@ -543,13 +570,19 @@ type TurnLatency = { eouDelayMs?: number; llmTtftMs?: number; ttsTtfbMs?: number
 function attachLatencyLogging(
   session: voice.AgentSession,
   activeConfig: {
+    voicePipeline: VoicePipeline;
     llmModel: string;
-    sttModel: string;
-    ttsModel: string;
+    // Fixed Gemini model buildTranscriptAndSummary always uses for post-call
+    // translation/classification, independent of which pipeline drove the live call.
+    classificationModel: string;
+    // null for gemini_native — its realtime model fuses STT/LLM/TTS into one, so
+    // there's no separate stage or endpointing window to report.
+    sttModel: string | null;
+    ttsModel: string | null;
     thinkingBudget: number;
     thinkingLevel: string;
-    endpointingMinDelayMs: number;
-    endpointingMaxDelayMs: number;
+    endpointingMinDelayMs: number | null;
+    endpointingMaxDelayMs: number | null;
     callUuid: string;
     callDirection: 'inbound' | 'outbound';
     callStartedAt: number;
@@ -560,9 +593,9 @@ function attachLatencyLogging(
   // The active LLM only honors one of thinkingBudget/thinkingLevel depending on
   // whether it's a Gemini 3.x model or earlier — see GEMINI_THINKING_LEVEL comment.
   console.log(
-    `[LATENCY] config llm_model=${activeConfig.llmModel} ` +
+    `[LATENCY] config pipeline=${activeConfig.voicePipeline} llm_model=${activeConfig.llmModel} ` +
       `thinking_budget=${activeConfig.thinkingBudget} thinking_level=${activeConfig.thinkingLevel} ` +
-      `endpointing_min=${activeConfig.endpointingMinDelayMs}ms endpointing_max=${activeConfig.endpointingMaxDelayMs}ms`
+      `endpointing_min=${activeConfig.endpointingMinDelayMs ?? 'n/a'}ms endpointing_max=${activeConfig.endpointingMaxDelayMs ?? 'n/a'}ms`
   );
 
   const turns = new Map<string, TurnLatency>();
@@ -577,6 +610,13 @@ function attachLatencyLogging(
   let sttAudioDurationMs = 0;
   let ttsCharactersCount = 0;
   let ttsAudioDurationMs = 0;
+  // gemini_native only — Gemini's realtime model reports token usage as a single
+  // fused input/output split (with audio vs. text sub-counts), not the separate
+  // llm/stt/tts triplet above.
+  let realtimeInputTextTokens = 0;
+  let realtimeInputAudioTokens = 0;
+  let realtimeOutputTextTokens = 0;
+  let realtimeOutputAudioTokens = 0;
 
   const maybeLogTotal = (speechId: string) => {
     const t = turns.get(speechId);
@@ -645,6 +685,29 @@ function attachLatencyLogging(
         ttsAudioDurationMs += m.audioDurationMs;
         break;
       }
+      case 'realtime_model_metrics': {
+        // One event per turn already covers the whole round-trip (no separate eou/llm/tts
+        // stages to join), so push straight into perTurn instead of waiting on maybeLogTotal.
+        // ttftMs (time to first audio token) stands in for totalMs here.
+        console.log(
+          `[LATENCY] request_id=${m.requestId} stage=realtime ttft=${Math.round(m.ttftMs)}ms ` +
+            `input_tokens=${m.inputTokens} output_tokens=${m.outputTokens}`
+        );
+        if (m.ttftMs >= 0) {
+          perTurn.push({
+            speechId: m.requestId,
+            eouDelayMs: 0,
+            llmTtftMs: Math.round(m.ttftMs),
+            ttsTtfbMs: 0,
+            totalMs: Math.round(m.ttftMs),
+          });
+        }
+        realtimeInputTextTokens += m.inputTokenDetails.textTokens;
+        realtimeInputAudioTokens += m.inputTokenDetails.audioTokens;
+        realtimeOutputTextTokens += m.outputTokenDetails.textTokens;
+        realtimeOutputAudioTokens += m.outputTokenDetails.audioTokens;
+        break;
+      }
       default:
         break;
     }
@@ -657,6 +720,7 @@ function attachLatencyLogging(
 
     const latencyMetrics: CallLatencyMetrics = {
       config: {
+        voicePipeline: activeConfig.voicePipeline,
         llmModel: activeConfig.llmModel,
         sttModel: activeConfig.sttModel,
         ttsModel: activeConfig.ttsModel,
@@ -693,8 +757,9 @@ function attachLatencyLogging(
       const [recordingUrl, artifacts] = await Promise.all([
         stopEgressAndGetUrl(activeConfig.egressClient, activeConfig.callInfo.egressId, activeConfig.callUuid),
         // Translate + classify now run in parallel (not sequential), so 12s covers
-        // one round-trip with margin rather than two.
-        withTimeout(buildTranscriptAndSummary(session, activeConfig.llmModel), 12_000, {
+        // one round-trip with margin rather than two. Always the fixed classification
+        // model, independent of activeConfig.llmModel (which varies by pipeline).
+        withTimeout(buildTranscriptAndSummary(session, activeConfig.classificationModel), 12_000, {
           transcript: null,
           aiSummary: null,
           sentiment: null,
@@ -705,6 +770,29 @@ function attachLatencyLogging(
           summaryCompletionTokens: 0,
         }),
       ]);
+
+      const usage: CallUsage =
+        activeConfig.voicePipeline === 'gemini_native'
+          ? {
+              kind: 'realtime',
+              llmModel: activeConfig.llmModel,
+              inputTextTokens: realtimeInputTextTokens,
+              inputAudioTokens: realtimeInputAudioTokens,
+              outputTextTokens: realtimeOutputTextTokens,
+              outputAudioTokens: realtimeOutputAudioTokens,
+              callDurationSec: durationSec,
+            }
+          : {
+              kind: 'standard',
+              llmModel: activeConfig.llmModel,
+              llmPromptTokens,
+              llmCompletionTokens,
+              sttModel: activeConfig.sttModel ?? 'unknown',
+              sttAudioDurationMs,
+              ttsModel: activeConfig.ttsModel ?? 'unknown',
+              ttsCharactersCount,
+              callDurationSec: durationSec,
+            };
 
       await reportCallCost({
         callUuid: activeConfig.callUuid,
@@ -720,16 +808,9 @@ function attachLatencyLogging(
         callIntent: artifacts.callIntent,
         callOutcome: artifacts.callOutcome,
         latencyMetrics,
-        usage: {
-          geminiModel: activeConfig.llmModel,
-          llmPromptTokens: llmPromptTokens + artifacts.summaryPromptTokens,
-          llmCompletionTokens: llmCompletionTokens + artifacts.summaryCompletionTokens,
-          sttModel: activeConfig.sttModel,
-          sttAudioDurationMs,
-          ttsModel: activeConfig.ttsModel,
-          ttsCharactersCount,
-          callDurationSec: durationSec,
-        },
+        usage,
+        classificationPromptTokens: artifacts.summaryPromptTokens,
+        classificationCompletionTokens: artifacts.summaryCompletionTokens,
       });
     })();
   });
@@ -757,29 +838,67 @@ export default defineAgent({
       bulkCallInfo ? fetchCampaignResolvedPrompt(bulkCallInfo.campaignId) : Promise.resolve(null),
     ]);
     const geminiModel = LLM_MODEL_OVERRIDE ?? models.geminiModel;
+    const voicePipeline = settings?.voicePipeline ?? DEFAULT_VOICE_PIPELINE;
 
-    const session = new voice.AgentSession({
-      vad: ctx.proc.userData.vad as silero.VAD,
-      stt: new sarvam.STT({ model: models.sttModel as any, languageCode: 'en-IN' }),
-      llm: new google.LLM({
-        model: geminiModel,
-        apiKey: process.env.GEMINI_API_KEY,
-        thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET, thinkingLevel: GEMINI_THINKING_LEVEL as any },
-      }),
-      tts: new sarvam.TTS({ model: models.ttsModel as any, speaker: models.ttsVoice, targetLanguageCode: 'en-IN' }),
-      turnHandling: {
-        endpointing: { minDelay: ENDPOINTING_MIN_DELAY_MS, maxDelay: ENDPOINTING_MAX_DELAY_MS },
-      },
-    });
+    let session: voice.AgentSession;
+    if (voicePipeline === 'openai_full') {
+      session = new voice.AgentSession({
+        vad: ctx.proc.userData.vad as silero.VAD,
+        stt: new openai.STT({ apiKey: process.env.OPENAI_API_KEY, model: OPENAI_PIPELINE_DEFAULTS.sttModel, language: 'en' }),
+        llm: new openai.LLM({ apiKey: process.env.OPENAI_API_KEY, model: OPENAI_PIPELINE_DEFAULTS.llmModel }),
+        tts: new openai.TTS({
+          apiKey: process.env.OPENAI_API_KEY,
+          model: OPENAI_PIPELINE_DEFAULTS.ttsModel,
+          voice: OPENAI_PIPELINE_DEFAULTS.ttsVoice as any,
+        }),
+        turnHandling: {
+          endpointing: { minDelay: ENDPOINTING_MIN_DELAY_MS, maxDelay: ENDPOINTING_MAX_DELAY_MS },
+        },
+      });
+    } else if (voicePipeline === 'gemini_native') {
+      // No vad/stt/tts/turnHandling — the realtime model fuses listening and
+      // speaking into one connection with its own server-side turn detection.
+      session = new voice.AgentSession({
+        llm: new google.realtime.RealtimeModel({
+          apiKey: process.env.GEMINI_API_KEY,
+          model: GEMINI_LIVE_PIPELINE_DEFAULTS.model,
+          voice: GEMINI_LIVE_PIPELINE_DEFAULTS.voice as any,
+          language: 'en-IN',
+        }),
+      });
+    } else {
+      session = new voice.AgentSession({
+        vad: ctx.proc.userData.vad as silero.VAD,
+        stt: new sarvam.STT({ model: models.sttModel as any, languageCode: 'en-IN' }),
+        llm: new google.LLM({
+          model: geminiModel,
+          apiKey: process.env.GEMINI_API_KEY,
+          thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET, thinkingLevel: GEMINI_THINKING_LEVEL as any },
+        }),
+        tts: new sarvam.TTS({ model: models.ttsModel as any, speaker: models.ttsVoice, targetLanguageCode: 'en-IN' }),
+        turnHandling: {
+          endpointing: { minDelay: ENDPOINTING_MIN_DELAY_MS, maxDelay: ENDPOINTING_MAX_DELAY_MS },
+        },
+      });
+    }
+
+    const pipelineLlmModel =
+      voicePipeline === 'openai_full'
+        ? OPENAI_PIPELINE_DEFAULTS.llmModel
+        : voicePipeline === 'gemini_native'
+          ? GEMINI_LIVE_PIPELINE_DEFAULTS.model
+          : geminiModel;
 
     attachLatencyLogging(session, {
-      llmModel: geminiModel,
-      sttModel: models.sttModel,
-      ttsModel: models.ttsModel,
+      voicePipeline,
+      llmModel: pipelineLlmModel,
+      classificationModel: geminiModel,
+      sttModel: voicePipeline === 'gemini_native' ? null : voicePipeline === 'openai_full' ? OPENAI_PIPELINE_DEFAULTS.sttModel : models.sttModel,
+      ttsModel: voicePipeline === 'gemini_native' ? null : voicePipeline === 'openai_full' ? OPENAI_PIPELINE_DEFAULTS.ttsModel : models.ttsModel,
       thinkingBudget: GEMINI_THINKING_BUDGET,
       thinkingLevel: GEMINI_THINKING_LEVEL,
-      endpointingMinDelayMs: ENDPOINTING_MIN_DELAY_MS,
-      endpointingMaxDelayMs: ENDPOINTING_MAX_DELAY_MS,
+      endpointingMinDelayMs: voicePipeline === 'gemini_native' ? null : ENDPOINTING_MIN_DELAY_MS,
+      endpointingMaxDelayMs: voicePipeline === 'gemini_native' ? null : ENDPOINTING_MAX_DELAY_MS,
       callUuid,
       callDirection,
       callStartedAt,

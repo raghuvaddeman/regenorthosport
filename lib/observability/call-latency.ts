@@ -16,13 +16,17 @@ export type CallLatencyTurn = {
 
 export type CallLatencyMetrics = {
   config: {
+    voicePipeline?: string;
     llmModel: string;
-    sttModel: string;
-    ttsModel: string;
+    // null for the gemini_native pipeline — Gemini's realtime model fuses
+    // STT/LLM/TTS into one, so there's no separate STT/TTS stage or
+    // endpointing window to report.
+    sttModel: string | null;
+    ttsModel: string | null;
     thinkingBudget: number;
     thinkingLevel: string;
-    endpointingMinDelayMs: number;
-    endpointingMaxDelayMs: number;
+    endpointingMinDelayMs: number | null;
+    endpointingMaxDelayMs: number | null;
   };
   summary: {
     turnCount: number;

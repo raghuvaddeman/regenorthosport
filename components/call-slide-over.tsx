@@ -228,13 +228,17 @@ export function CallSlideOver({ call, onClose }: { call: Call; onClose: () => vo
                   <div>
                     STT/TTS:{" "}
                     <span className="font-mono text-zinc-700 dark:text-zinc-300">
-                      {call.latencyMetrics.config.sttModel} / {call.latencyMetrics.config.ttsModel}
+                      {call.latencyMetrics.config.sttModel && call.latencyMetrics.config.ttsModel
+                        ? `${call.latencyMetrics.config.sttModel} / ${call.latencyMetrics.config.ttsModel}`
+                        : "native audio (fused)"}
                     </span>
                   </div>
                   <div>
                     Endpointing:{" "}
                     <span className="font-mono text-zinc-700 dark:text-zinc-300">
-                      {call.latencyMetrics.config.endpointingMinDelayMs}-{call.latencyMetrics.config.endpointingMaxDelayMs}ms
+                      {call.latencyMetrics.config.endpointingMinDelayMs != null && call.latencyMetrics.config.endpointingMaxDelayMs != null
+                        ? `${call.latencyMetrics.config.endpointingMinDelayMs}-${call.latencyMetrics.config.endpointingMaxDelayMs}ms`
+                        : "n/a"}
                     </span>
                   </div>
                   <div>
