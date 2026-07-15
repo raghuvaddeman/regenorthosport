@@ -18,7 +18,7 @@ import * as sarvam from '@livekit/agents-plugin-sarvam';
 import * as silero from '@livekit/agents-plugin-silero';
 import { EgressClient } from 'livekit-server-sdk';
 import { EncodedFileOutput, EncodedFileType, S3Upload } from '@livekit/protocol';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { z } from 'zod';
 import type { CallUsage } from '../lib/pricing/call-cost';
 import type { CallLatencyMetrics, CallLatencyTurn } from '../lib/observability/call-latency';
@@ -250,6 +250,7 @@ async function reportCallCost(payload: {
   recordingUrl: string | null;
   transcript: string | null;
   aiSummary: string | null;
+  sentiment: SentimentLabel | null;
   latencyMetrics: CallLatencyMetrics;
 }) {
   const appUrl = process.env.APP_URL;
@@ -364,11 +365,25 @@ const TRANSLATE_PROMPT_PREFIX =
   '- Do not add commentary, headers, or anything else — output only the transcript lines.\n\n' +
   'Transcript:\n';
 
+const SENTIMENT_LABELS = ['neutral', 'anxious', 'frustrated', 'curious', 'satisfied'] as const;
+type SentimentLabel = (typeof SENTIMENT_LABELS)[number];
+
 const SUMMARY_PROMPT_PREFIX =
-  'Summarize this healthcare-practice phone call in 2-4 sentences for a front-desk dashboard. ' +
-  "Include: the caller's stated reason for calling, any action taken or promised (e.g. appointment " +
-  'request logged, callback promised), and any follow-up needed. Be concise and factual, no preamble.\n\n' +
+  'Analyze this healthcare-practice phone call for a front-desk dashboard.\n\n' +
+  '1. summary: 2-4 sentences covering the caller\'s stated reason for calling, any action taken or ' +
+  'promised (e.g. appointment request logged, callback promised), and any follow-up needed. Concise ' +
+  'and factual, no preamble.\n' +
+  `2. sentiment: the caller's dominant emotional state during the call, exactly one of: ${SENTIMENT_LABELS.join(', ')}.\n\n` +
   'Transcript:\n';
+
+const SUMMARY_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    summary: { type: Type.STRING },
+    sentiment: { type: Type.STRING, enum: [...SENTIMENT_LABELS] },
+  },
+  required: ['summary', 'sentiment'],
+};
 
 /**
  * Extracts a speaker-attributed transcript from the session's chat history, translates
@@ -381,7 +396,13 @@ const SUMMARY_PROMPT_PREFIX =
 async function buildTranscriptAndSummary(
   session: voice.AgentSession,
   geminiModel: string
-): Promise<{ transcript: string | null; aiSummary: string | null; summaryPromptTokens: number; summaryCompletionTokens: number }> {
+): Promise<{
+  transcript: string | null;
+  aiSummary: string | null;
+  sentiment: SentimentLabel | null;
+  summaryPromptTokens: number;
+  summaryCompletionTokens: number;
+}> {
   console.log(
     '[RECORDING] session.history.items:',
     session.history.items.length,
@@ -402,7 +423,7 @@ async function buildTranscriptAndSummary(
       transcriptLength: rawTranscript.length,
       hasApiKey: !!apiKey,
     });
-    return { transcript: rawTranscript || null, aiSummary: null, summaryPromptTokens: 0, summaryCompletionTokens: 0 };
+    return { transcript: rawTranscript || null, aiSummary: null, sentiment: null, summaryPromptTokens: 0, summaryCompletionTokens: 0 };
   }
 
   const genai = new GoogleGenAI({ apiKey });
@@ -427,17 +448,22 @@ async function buildTranscriptAndSummary(
     const summaryResp = await genai.models.generateContent({
       model: geminiModel,
       contents: [{ role: 'user', parts: [{ text: SUMMARY_PROMPT_PREFIX + transcript }] }],
+      config: { responseMimeType: 'application/json', responseSchema: SUMMARY_RESPONSE_SCHEMA },
     });
-    console.log('[RECORDING] AI summary generated:', summaryResp.text ?? '(empty)');
+    const parsed = summaryResp.text ? JSON.parse(summaryResp.text) : null;
+    const sentiment: SentimentLabel | null =
+      parsed && SENTIMENT_LABELS.includes(parsed.sentiment) ? parsed.sentiment : null;
+    console.log('[RECORDING] AI summary generated:', parsed?.summary ?? '(empty)', 'sentiment:', sentiment ?? '(none)');
     return {
       transcript,
-      aiSummary: summaryResp.text ?? null,
+      aiSummary: parsed?.summary ?? null,
+      sentiment,
       summaryPromptTokens: promptTokens + (summaryResp.usageMetadata?.promptTokenCount ?? 0),
       summaryCompletionTokens: completionTokens + (summaryResp.usageMetadata?.candidatesTokenCount ?? 0),
     };
   } catch (err: any) {
     console.warn('[RECORDING] AI summary generation failed:', err.message);
-    return { transcript, aiSummary: null, summaryPromptTokens: promptTokens, summaryCompletionTokens: completionTokens };
+    return { transcript, aiSummary: null, sentiment: null, summaryPromptTokens: promptTokens, summaryCompletionTokens: completionTokens };
   }
 }
 
@@ -606,6 +632,7 @@ function attachLatencyLogging(
         withTimeout(buildTranscriptAndSummary(session, activeConfig.llmModel), 18_000, {
           transcript: null,
           aiSummary: null,
+          sentiment: null,
           summaryPromptTokens: 0,
           summaryCompletionTokens: 0,
         }),
@@ -620,6 +647,7 @@ function attachLatencyLogging(
         recordingUrl,
         transcript: artifacts.transcript,
         aiSummary: artifacts.aiSummary,
+        sentiment: artifacts.sentiment,
         latencyMetrics,
         usage: {
           geminiModel: activeConfig.llmModel,

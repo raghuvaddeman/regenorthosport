@@ -24,6 +24,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isAuthorizedInternalRequest } from "@/lib/telephony/internal-auth";
 import { computeCallCost, type CallUsage } from "@/lib/pricing/call-cost";
 import type { CallLatencyMetrics } from "@/lib/observability/call-latency";
+import { isSentimentLabel, type SentimentLabel } from "@/lib/sentiment";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,7 @@ type DbCallRow = {
   transcript?: string | null;
   summary?: string | null;
   ai_summary?: string | null;
+  sentiment?: string | null;
   rating?: number | null;
   ai_rating?: number | null;
   call_at?: string | null;
@@ -85,6 +87,7 @@ function normalizeRow(row: DbCallRow) {
     recordingUrl: row.recording_url ?? "",
     transcript: row.transcript ?? "",
     summary: row.summary ?? row.ai_summary ?? "",
+    sentiment: isSentimentLabel(row.sentiment) ? row.sentiment : null,
     rating: Number(row.rating ?? row.ai_rating ?? 0),
     costInr: Number(row.total_cost_inr ?? 0),
     llmCostInr: Number(row.llm_cost_inr ?? 0),
@@ -191,6 +194,7 @@ export async function POST(request: NextRequest) {
       recordingUrl,
       transcript,
       aiSummary,
+      sentiment,
       latencyMetrics,
     } = body as {
       clientId?: string;
@@ -203,6 +207,7 @@ export async function POST(request: NextRequest) {
       recordingUrl?: string | null;
       transcript?: string | null;
       aiSummary?: string | null;
+      sentiment?: SentimentLabel | null;
       latencyMetrics?: CallLatencyMetrics | null;
     };
 
@@ -237,6 +242,7 @@ export async function POST(request: NextRequest) {
       recording_url: recordingUrl ?? null,
       transcript: transcript ?? null,
       ai_summary: aiSummary ?? null,
+      sentiment: sentiment ?? null,
       latency_metrics: latencyMetrics ?? null,
       llm_cost_inr: cost.llmCostInr,
       stt_cost_inr: cost.sttCostInr,

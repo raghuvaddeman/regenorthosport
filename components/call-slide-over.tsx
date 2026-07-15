@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { Play, Pause, X, Sparkles, Star, ChevronDown, Gauge } from "lucide-react";
 import type { Call } from "@/lib/use-calls";
 import type { CallLatencyMetrics } from "@/lib/observability/call-latency";
+import type { SentimentLabel } from "@/lib/sentiment";
 
 /* ------------------------------- Utilities ------------------------------ */
 
@@ -65,6 +66,27 @@ export function CallTypeBadge({ direction }: { direction: "inbound" | "outbound"
       className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize ${tone}`}
     >
       {direction}
+    </span>
+  );
+}
+
+const SENTIMENT_STYLES: Record<SentimentLabel, string> = {
+  satisfied: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  curious: "border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400",
+  neutral: "border-zinc-400/30 bg-zinc-400/10 text-zinc-600 dark:text-zinc-400",
+  anxious: "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  frustrated: "border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+};
+
+export function SentimentBadge({ sentiment }: { sentiment: SentimentLabel | null }) {
+  if (!sentiment) {
+    return <span className="text-zinc-300 dark:text-zinc-600">—</span>;
+  }
+  return (
+    <span
+      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize ${SENTIMENT_STYLES[sentiment]}`}
+    >
+      {sentiment}
     </span>
   );
 }

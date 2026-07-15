@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { CallLatencyMetrics } from "@/lib/observability/call-latency";
+import type { SentimentLabel } from "@/lib/sentiment";
 
 export type Call = {
   uuid: string;
@@ -18,6 +19,7 @@ export type Call = {
   recordingUrl: string;
   transcript: string;
   summary: string;
+  sentiment: SentimentLabel | null; // null for calls made before this was tracked, or if classification failed
   rating: number; // 1–5, 0 when analysis hasn't arrived yet
   costInr: number; // estimated Gemini + Sarvam STT/TTS + LiveKit cost, in INR
   llmCostInr: number;
