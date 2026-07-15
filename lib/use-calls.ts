@@ -19,6 +19,10 @@ export type Call = {
   summary: string;
   rating: number; // 1–5, 0 when analysis hasn't arrived yet
   costInr: number; // estimated Gemini + Sarvam STT/TTS + LiveKit cost, in INR
+  llmCostInr: number;
+  sttCostInr: number;
+  ttsCostInr: number;
+  livekitCostInr: number;
   latencyMetrics: CallLatencyMetrics | null; // null for calls made before this was tracked
   at: string; // ISO datetime
 };

@@ -64,6 +64,10 @@ type DbCallRow = {
   call_date_time?: string | null;
   created_at?: string | null;
   total_cost_inr?: number | null;
+  llm_cost_inr?: number | null;
+  stt_cost_inr?: number | null;
+  tts_cost_inr?: number | null;
+  livekit_cost_inr?: number | null;
   latency_metrics?: CallLatencyMetrics | null;
 };
 
@@ -80,6 +84,10 @@ function normalizeRow(row: DbCallRow) {
     summary: row.summary ?? row.ai_summary ?? "",
     rating: Number(row.rating ?? row.ai_rating ?? 0),
     costInr: Number(row.total_cost_inr ?? 0),
+    llmCostInr: Number(row.llm_cost_inr ?? 0),
+    sttCostInr: Number(row.stt_cost_inr ?? 0),
+    ttsCostInr: Number(row.tts_cost_inr ?? 0),
+    livekitCostInr: Number(row.livekit_cost_inr ?? 0),
     latencyMetrics: row.latency_metrics ?? null,
     at:
       row.call_at ??
