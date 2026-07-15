@@ -194,10 +194,23 @@ const GEMINI_THINKING_LEVEL = 'MINIMAL';
 // current config — both affect the same turn-taking decision, so stacking them would make
 // it hard to tell which change caused any new interruption issues.
 //
-// minDelay raised 400ms -> 600ms after test calls showed premature turn commits ("transcript
-// arrives after turn has been committed" warnings) and mid-sentence caller cut-offs — 400ms was
-// tighter than Sarvam's typical 700-1200ms transcription delay. Costs ~200ms on fast turns.
-const ENDPOINTING_MIN_DELAY_MS = 600;
+// minDelay raised 400ms -> 600ms -> 700ms across two rounds of real test calls, each
+// time after the same "transcript arrives after turn has been committed. consider
+// raising `minDelay`" warning kept firing. The second round (2026-07-15, 19-turn
+// call) showed multiple turns' endOfUtteranceDelayMs landing at exactly 1200ms —
+// the maxDelay ceiling — meaning Sarvam was already using the full window on
+// several turns, consistent with its documented 700-1200ms typical delay.
+//
+// maxDelay deliberately NOT lowered (tightening it to 800ms alongside this raise
+// was requested) — those same turns that hit the 1200ms ceiling
+// would instead force-commit at 800ms, before Sarvam's transcript is ready even
+// more often, making the exact warning this change targets MORE frequent. The
+// two changes pull in opposite directions given this data; only the evidenced
+// one (raising minDelay) is applied. Revisit maxDelay only with its own test-call
+// evidence, not paired with a minDelay change in the same round (compounding
+// changes made past regressions hard to attribute — see the FUTURE EXPERIMENT
+// note above).
+const ENDPOINTING_MIN_DELAY_MS = 700;
 const ENDPOINTING_MAX_DELAY_MS = 1200;
 
 // A/B testing knob: overrides the dashboard-configured Gemini model when set, so future
