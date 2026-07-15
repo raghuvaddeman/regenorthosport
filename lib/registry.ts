@@ -38,7 +38,26 @@ export const PROVIDER_REGISTRY = {
     category: "llm",
     provider_name: "Gemini",
     secretFields: ["apiKey"],
-    fields: [{ key: "model", options: ["gemini-2.5-flash", "gemini-2.5-pro"] }] as FieldDef[]
+    // Verified against node_modules/@livekit/agents-plugin-google/dist/models.d.ts's
+    // ChatModels union, plus gemini-3.1-flash-lite (agent/worker.ts's actual pinned
+    // production default — confirmed via live call logs — which isn't in that type
+    // list, since Google ships new model IDs faster than the plugin's types catch up).
+    // Google deprecates model IDs without much notice (see AGENTS.md/commit history) —
+    // re-verify this list periodically rather than trusting it indefinitely.
+    fields: [
+      {
+        key: "model",
+        options: [
+          "gemini-3.1-flash-lite",
+          "gemini-3.5-flash",
+          "gemini-3-flash-preview",
+          "gemini-3-pro-preview",
+          "gemini-2.5-flash",
+          "gemini-2.5-pro",
+          "gemini-2.0-flash-001",
+        ],
+      },
+    ] as FieldDef[]
   },
   elevenlabs: {
     category: "tts",
