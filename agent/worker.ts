@@ -867,12 +867,16 @@ export default defineAgent({
     } else if (voicePipeline === 'gemini_native') {
       // No vad/stt/tts/turnHandling — the realtime model fuses listening and
       // speaking into one connection with its own server-side turn detection.
+      // No `language` either: confirmed on a real call that native-audio models
+      // reject an explicit language code outright ("Unsupported language code
+      // 'en-IN'") rather than just ignoring it — they auto-detect the caller's
+      // spoken language instead, which suits our English/Hindi/Telugu-mixing
+      // callers better than pinning one code would anyway.
       session = new voice.AgentSession({
         llm: new google.realtime.RealtimeModel({
           apiKey: process.env.GEMINI_API_KEY,
           model: GEMINI_LIVE_PIPELINE_DEFAULTS.model,
           voice: GEMINI_LIVE_PIPELINE_DEFAULTS.voice as any,
-          language: 'en-IN',
         }),
       });
     } else {
