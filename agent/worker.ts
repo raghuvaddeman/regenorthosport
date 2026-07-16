@@ -929,18 +929,24 @@ export default defineAgent({
     const participant = [...ctx.room.remoteParticipants.values()][0];
     callInfo.customerPhone = participant?.identity?.replace(/^sip_/, '') ?? '';
 
+    // Not awaited: Room Composite Egress (a full browser-based compositor on LiveKit's
+    // side) can take several seconds to spin up — awaiting it here was delaying the
+    // welcome greeting by that long on every call, confirmed on a real test call
+    // ("agent speaking after 10 seconds"). callInfo.egressId is only read later, at
+    // session Close (well after this resolves), so recording can start in the
+    // background without the caller waiting on it.
     if (egressClient) {
       const recordingOutput = buildRecordingOutput(callUuid);
       if (recordingOutput) {
-        try {
-          const egressInfo = await egressClient.startRoomCompositeEgress(ctx.room.name ?? callUuid, recordingOutput, {
-            audioOnly: true,
+        void egressClient
+          .startRoomCompositeEgress(ctx.room.name ?? callUuid, recordingOutput, { audioOnly: true })
+          .then((egressInfo) => {
+            callInfo.egressId = egressInfo.egressId;
+            console.log('[RECORDING] Egress started:', egressInfo.egressId, 'status=', egressInfo.status);
+          })
+          .catch((err: any) => {
+            console.warn('[RECORDING] Egress start failed:', err.message);
           });
-          callInfo.egressId = egressInfo.egressId;
-          console.log('[RECORDING] Egress started:', egressInfo.egressId, 'status=', egressInfo.status);
-        } catch (err: any) {
-          console.warn('[RECORDING] Egress start failed:', err.message);
-        }
       }
     } else {
       console.warn('[RECORDING] Skipping egress: egressClient is null.');
