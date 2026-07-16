@@ -4,19 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Bot,
-  BrainCircuit,
-  AudioLines,
   Cpu,
   PhoneCall,
   Wrench,
-  BarChart3,
   PhoneIncoming,
   Save,
   Sparkles,
   Info,
-  TrendingUp,
-  TrendingDown,
-  PhoneIncoming as InboundIcon,
   Voicemail,
   UserCheck,
   MessageSquareText,
@@ -46,24 +40,13 @@ import {
 
 const TABS = [
   { id: "agent", label: "Agent", icon: Bot },
-  { id: "llm", label: "LLM", icon: BrainCircuit },
-  { id: "audio", label: "Audio", icon: AudioLines },
   { id: "engine", label: "Engine", icon: Cpu },
   { id: "call", label: "Call", icon: PhoneCall },
   { id: "tools", label: "Tools", icon: Wrench },
-  { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "inbound", label: "Inbound", icon: PhoneIncoming },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
-
-interface ConnectedProvider {
-  id: string;
-  provider_key: string;
-  provider_name: string;
-  category: string;
-  status: string;
-}
 
 /* ------------------------------ UI building blocks ------------------------------ */
 
@@ -143,34 +126,6 @@ function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   );
 }
 
-function SegmentedControl<T extends string>({
-  value,
-  onChange,
-  options,
-}: {
-  value: T;
-  onChange: (v: T) => void;
-  options: { value: T; label: string }[];
-}) {
-  return (
-    <div className="inline-flex rounded-md border border-zinc-200 bg-zinc-50 p-0.5 dark:border-zinc-500 dark:bg-zinc-800">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
-            value === opt.value
-              ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-600 dark:text-white"
-              : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-          }`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Slider({
   value,
@@ -262,33 +217,6 @@ function Toggle({
   );
 }
 
-function KpiCard({
-  label,
-  value,
-  delta,
-  up,
-}: {
-  label: string;
-  value: string;
-  delta: string;
-  up: boolean;
-}) {
-  return (
-    <div className="group rounded-xl border border-zinc-200 bg-white p-5 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-700 dark:hover:bg-zinc-600/60">
-      <p className="text-xs font-medium uppercase tracking-wider text-zinc-400">{label}</p>
-      <p className="mt-2 font-mono text-2xl font-semibold tabular-nums tracking-tight">{value}</p>
-      <div
-        className={`mt-1.5 inline-flex items-center gap-1 text-xs font-medium ${
-          up ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-500 dark:text-zinc-400"
-        }`}
-      >
-        {up ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-        {delta}
-      </div>
-    </div>
-  );
-}
-
 // Live testing (Get/Test call, Agent Status, etc.) moved to its own
 // "Agent Actions" page/sidebar entry — see app/(portal)/dashboard/agent-actions.
 
@@ -337,44 +265,6 @@ export default function AgentSettingsPage() {
     fetchAgentSettings();
   }, []);
 
-  // LLM tab
-  const [provider, setProvider] = useState("");
-  const [model, setModel] = useState("gpt-4o");
-  const [temperature, setTemperature] = useState(0.4);
-  const [maxTokens, setMaxTokens] = useState(250);
-  const [llmProviders, setLlmProviders] = useState<ConnectedProvider[]>([]);
-  const [loadingLlmProviders, setLoadingLlmProviders] = useState(true);
-
-  useEffect(() => {
-    async function fetchLlmProviders() {
-      try {
-        const res = await fetch("/api/providers");
-        const json = await res.json();
-        if (json.success) {
-          const connected = (json.data as ConnectedProvider[]).filter(
-            (p) => p.category === "llm" && p.status === "connected"
-          );
-          setLlmProviders(connected);
-          setProvider((prev) => prev || connected[0]?.provider_key || "");
-        }
-      } catch {
-        // leave llmProviders empty; the UI will prompt to connect one
-      } finally {
-        setLoadingLlmProviders(false);
-      }
-    }
-    fetchLlmProviders();
-  }, []);
-
-  // Audio tab
-  const [voice, setVoice] = useState("aria");
-  const [outputFormat, setOutputFormat] = useState<"pcm16" | "mp3" | "mulaw">("pcm16");
-  const [speakingRate, setSpeakingRate] = useState(1.0);
-  const [denoise, setDenoise] = useState(true);
-  const [ambientProfile, setAmbientProfile] = useState<"clinic-quiet" | "office-ambience">(
-    "clinic-quiet"
-  );
-
   // Engine tab
   const [interruptionWords, setInterruptionWords] = useState(3);
   const [endpointingMs, setEndpointingMs] = useState(700);
@@ -395,7 +285,6 @@ export default function AgentSettingsPage() {
   });
 
   // Inbound tab
-  const [assignedNumber, setAssignedNumber] = useState("+1 (555) 019-2044");
   const [afterHoursMessage, setAfterHoursMessage] = useState(
     "Thanks for calling RegenOrthoSport. Our office is currently closed. Please leave a message and we'll return your call during business hours."
   );
@@ -570,111 +459,6 @@ export default function AgentSettingsPage() {
       )}
 
       {/* LLM */}
-      {activeTab === "llm" && (
-        <div className="space-y-6">
-          <SectionCard title="Model provider" description="Choose which LLM backend powers the agent.">
-            {loadingLlmProviders ? (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading connected providers…</p>
-            ) : llmProviders.length === 0 ? (
-              <div className="flex flex-col items-start gap-3">
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  No LLM providers are connected yet. Connect one to power this agent.
-                </p>
-                <Link
-                  href="/dashboard/providers?category=llm"
-                  className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
-                >
-                  🔌 Connect an LLM Provider
-                </Link>
-              </div>
-            ) : (
-              <>
-                <Field label="Provider">
-                  <SegmentedControl
-                    value={provider}
-                    onChange={setProvider}
-                    options={llmProviders.map((p) => ({ value: p.provider_key, label: p.provider_name }))}
-                  />
-                </Field>
-                <Field
-                  label="Model"
-                  hint={`Routed through ${llmProviders.find((p) => p.provider_key === provider)?.provider_name ?? ""}.`}
-                >
-                  <SelectInput value={model} onChange={(e) => setModel(e.target.value)}>
-                    <option value="gpt-4o">gpt-4o</option>
-                    <option value="gpt-4o-mini">gpt-4o-mini</option>
-                    <option value="gpt-4.1">gpt-4.1</option>
-                  </SelectInput>
-                </Field>
-              </>
-            )}
-          </SectionCard>
-
-          <SectionCard title="Generation parameters">
-            <Field
-              label="Temperature"
-              hint="Lower is more deterministic and on-script."
-              valueLabel={`${temperature}`}
-            >
-              <Slider value={temperature} onChange={setTemperature} min={0} max={1} step={0.1} />
-            </Field>
-            <Field label="Max response tokens" valueLabel={`${maxTokens}`}>
-              <Slider value={maxTokens} onChange={setMaxTokens} min={50} max={800} step={10} />
-            </Field>
-          </SectionCard>
-        </div>
-      )}
-
-      {/* Audio */}
-      {activeTab === "audio" && (
-        <div className="space-y-6">
-          <SectionCard title="Voice" description="Text-to-speech voice and output format.">
-            <Field label="Voice">
-              <SelectInput value={voice} onChange={(e) => setVoice(e.target.value)}>
-                <option value="aria">Aria — warm, professional</option>
-                <option value="nova">Nova — bright, energetic</option>
-                <option value="sage">Sage — calm, measured</option>
-              </SelectInput>
-            </Field>
-            <Field label="Output format">
-              <SegmentedControl
-                value={outputFormat}
-                onChange={setOutputFormat}
-                options={[
-                  { value: "pcm16", label: "PCM16" },
-                  { value: "mp3", label: "MP3" },
-                  { value: "mulaw", label: "μ-law" },
-                ]}
-              />
-            </Field>
-            <Field label="Speaking rate" valueLabel={`${speakingRate}x`}>
-              <Slider value={speakingRate} onChange={setSpeakingRate} min={0.5} max={1.5} step={0.05} suffix="x" />
-            </Field>
-          </SectionCard>
-
-          <SectionCard title="Input processing">
-            <Toggle
-              checked={denoise}
-              onChange={setDenoise}
-              label="Background noise suppression"
-              description="Filters ambient noise from the caller's line before transcription."
-            />
-            <Field
-              label="Ambient noise profile"
-              hint="Calibrates noise suppression to the room the agent is deployed in."
-            >
-              <SelectInput
-                value={ambientProfile}
-                onChange={(e) => setAmbientProfile(e.target.value as typeof ambientProfile)}
-              >
-                <option value="clinic-quiet">Clinic Room (Absolute Quiet)</option>
-                <option value="office-ambience">Active Front-Desk Ambience</option>
-              </SelectInput>
-            </Field>
-          </SectionCard>
-        </div>
-      )}
-
       {/* Engine */}
       {activeTab === "engine" && (
         <div className="space-y-6">
@@ -779,36 +563,9 @@ export default function AgentSettingsPage() {
       )}
 
       {/* Analytics */}
-      {activeTab === "analytics" && (
-        <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <KpiCard label="Calls this month" value="482" delta="+12% vs last week" up />
-            <KpiCard label="Avg. handle time" value="3:42" delta="-4% vs last week" up={false} />
-            <KpiCard label="Task success rate" value="91%" delta="+3% vs last week" up />
-          </div>
-          <SectionCard title="About this tab">
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Detailed call-level analytics live in{" "}
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">Sentiment Analysis</span> and{" "}
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">Call Logs</span>. This tab
-              summarizes agent-level performance for the current configuration.
-            </p>
-          </SectionCard>
-        </div>
-      )}
-
       {/* Inbound */}
       {activeTab === "inbound" && (
         <div className="space-y-6">
-          <SectionCard title="Number assignment" description="The phone number this agent answers.">
-            <Field label="Assigned number">
-              <div className="flex items-center gap-2">
-                <InboundIcon className="h-4 w-4 shrink-0 text-zinc-400" />
-                <TextInput value={assignedNumber} onChange={(e) => setAssignedNumber(e.target.value)} />
-              </div>
-            </Field>
-          </SectionCard>
-
           <SectionCard title="After-hours handling">
             <Field label="After-hours message">
               <TextArea
