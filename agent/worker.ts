@@ -233,8 +233,15 @@ function buildRsvpTool(contactId: string) {
 const MODEL_DEFAULTS = {
   geminiModel: 'gemini-3.1-flash-lite',
   sttModel: 'saaras:v3',
-  ttsModel: 'bulbul:v2',
-  ttsVoice: 'anushka',
+  // 'anushka' (the v2 voice used previously) doesn't exist on v3 — confirmed against
+  // node_modules/@livekit/agents-plugin-sarvam/dist/models.d.ts's TTSV3Speakers union,
+  // which is a different, larger voice roster than TTSV2Speakers. 'priya' was picked to
+  // match the persona name; listen on a real call and swap if it doesn't fit her voice.
+  // Note: bulbul:v3 is priced 2x bulbul:v2 (₹30 vs ₹15 per 10k chars, per Sarvam's
+  // pricing page, and explicitly "beta pricing" so it may still change) — see
+  // lib/pricing/call-cost.ts's TTS_PRICING.
+  ttsModel: 'bulbul:v3',
+  ttsVoice: 'priya',
 };
 
 // Fixed defaults for the two alternate voice pipelines (lib/voice-pipeline.ts) — not

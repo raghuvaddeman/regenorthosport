@@ -35,6 +35,9 @@ export const STT_PRICING: Record<string, { inrPerHour: number }> = {
 // TTS pricing, keyed by model name — Sarvam (gemini_sarvam) and OpenAI (openai_full).
 export const TTS_PRICING: Record<string, { inrPer10kChars: number }> = {
   "bulbul:v2": { inrPer10kChars: 15 },
+  // 2x bulbul:v2's rate, and explicitly "beta pricing" per Sarvam's pricing page as of
+  // 2026-07-16 — re-verify if it looks off, more likely to move than the v2 rate.
+  "bulbul:v3": { inrPer10kChars: 30 },
   // $15/1M chars = $0.15/10k chars.
   "tts-1": { inrPer10kChars: 0.15 * INR_PER_USD },
 };
