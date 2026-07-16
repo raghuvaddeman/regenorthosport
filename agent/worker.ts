@@ -170,8 +170,15 @@ const OPENAI_PIPELINE_DEFAULTS = {
   ttsModel: 'tts-1',
   ttsVoice: 'alloy',
 };
+// NOT gemini-3.1-flash-live-preview: confirmed via a real test call + SDK source
+// (node_modules/@livekit/agents-plugin-google/dist/realtime/realtime_api.js — any
+// model name containing "3.1" sets midSessionChatCtxUpdate: false) that any "3.1"
+// live model silently breaks session.generateReply(), which is how the welcome
+// greeting is triggered — the agent said nothing until the caller spoke first.
+// gemini-2.5-flash-native-audio-preview-12-2025 is the SDK's own default for
+// non-Vertex (apiKey) auth and does not have this limitation.
 const GEMINI_LIVE_PIPELINE_DEFAULTS = {
-  model: 'gemini-3.1-flash-live-preview',
+  model: 'gemini-2.5-flash-native-audio-preview-12-2025',
   voice: 'Puck',
 };
 

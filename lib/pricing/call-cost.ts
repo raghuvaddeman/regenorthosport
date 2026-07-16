@@ -48,10 +48,20 @@ export const GEMINI_LIVE_PRICING: Record<
   string,
   { textInputPerMTokUsd: number; audioInputPerMTokUsd: number; textOutputPerMTokUsd: number; audioOutputPerMTokUsd: number }
 > = {
+  // gemini-3.1-flash-live-preview dropped as the pinned model (agent/worker.ts) — it
+  // silently breaks the welcome greeting (see GEMINI_LIVE_PIPELINE_DEFAULTS comment
+  // there) — but its rate stays here in case a call still reports it (e.g. one placed
+  // before this fix deployed).
   "gemini-3.1-flash-live-preview": {
     textInputPerMTokUsd: 0.75,
     audioInputPerMTokUsd: 3.0,
     textOutputPerMTokUsd: 4.5,
+    audioOutputPerMTokUsd: 12.0,
+  },
+  "gemini-2.5-flash-native-audio-preview-12-2025": {
+    textInputPerMTokUsd: 0.5,
+    audioInputPerMTokUsd: 3.0,
+    textOutputPerMTokUsd: 2.0,
     audioOutputPerMTokUsd: 12.0,
   },
 };
@@ -66,7 +76,7 @@ export const LIVEKIT_PRICING = {
 const DEFAULT_LLM_RATE = LLM_PRICING["gemini-3.1-flash-lite"];
 const DEFAULT_STT_RATE = STT_PRICING["saaras:v3"];
 const DEFAULT_TTS_RATE = TTS_PRICING["bulbul:v2"];
-const DEFAULT_GEMINI_LIVE_RATE = GEMINI_LIVE_PRICING["gemini-3.1-flash-live-preview"];
+const DEFAULT_GEMINI_LIVE_RATE = GEMINI_LIVE_PRICING["gemini-2.5-flash-native-audio-preview-12-2025"];
 
 export type StandardCallUsage = {
   kind: "standard";
@@ -149,7 +159,7 @@ function computeStandardCallCost(usage: StandardCallUsage): CallCostBreakdown {
 function computeRealtimeCallCost(usage: RealtimeCallUsage): CallCostBreakdown {
   const rate = GEMINI_LIVE_PRICING[usage.llmModel];
   if (!rate) {
-    console.warn(`No Gemini Live pricing entry for model "${usage.llmModel}", falling back to gemini-3.1-flash-live-preview rate.`);
+    console.warn(`No Gemini Live pricing entry for model "${usage.llmModel}", falling back to gemini-2.5-flash-native-audio-preview-12-2025 rate.`);
   }
   const { textInputPerMTokUsd, audioInputPerMTokUsd, textOutputPerMTokUsd, audioOutputPerMTokUsd } = rate ?? DEFAULT_GEMINI_LIVE_RATE;
 
