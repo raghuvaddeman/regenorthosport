@@ -977,8 +977,16 @@ export default defineAgent({
     } else if (voicePipeline === 'sarvam_full') {
       // Sarvam's own STT/TTS (same as gemini_sarvam) paired with Sarvam's LLM instead of
       // Gemini's — see SARVAM_LLM_BASE_URL comment for why this reuses openai.LLM rather
-      // than a custom adapter. reasoningEffort: 'low' favors latency over reasoning depth,
-      // matching the same intent as GEMINI_THINKING_BUDGET=0 for the Gemini pipeline.
+      // than a custom adapter.
+      //
+      // reasoningEffort: null (NOT 'low') — confirmed via a real test call + docs.sarvam.ai:
+      // 'low' still runs Sarvam-30B's hybrid "think" mode, which burned 1200-1900 completion
+      // tokens of hidden reasoning before a ~10-word spoken reply, causing 5-10s TTFT and a
+      // dropped call. Sarvam's docs are explicit that only `reasoning_effort: null` fully
+      // disables thinking mode. The openai.LLM plugin's TS type omits `null` from its
+      // ReasoningEffort union even though the wire format accepts it (the plugin only
+      // guards on `!== undefined` before serializing, so `null` passes through) — the `as any`
+      // below is working around that gap, not a sign the value itself is wrong.
       session = new voice.AgentSession({
         vad: ctx.proc.userData.vad as silero.VAD,
         stt: new sarvam.STT({ model: models.sttModel as any, languageCode: 'en-IN' }),
@@ -986,7 +994,7 @@ export default defineAgent({
           apiKey: process.env.SARVAM_API_KEY,
           baseURL: SARVAM_LLM_BASE_URL,
           model: SARVAM_PIPELINE_DEFAULTS.llmModel,
-          reasoningEffort: 'low',
+          reasoningEffort: null as any,
         }),
         tts: new sarvam.TTS({
           model: models.ttsModel as any,
