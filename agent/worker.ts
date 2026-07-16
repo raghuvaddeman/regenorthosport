@@ -686,26 +686,28 @@ function attachLatencyLogging(
         break;
       }
       case 'realtime_model_metrics': {
-        // One event per turn already covers the whole round-trip (no separate eou/llm/tts
-        // stages to join), so push straight into perTurn instead of waiting on maybeLogTotal.
-        // ttftMs (time to first audio token) stands in for totalMs here.
+        // NOT one event per conversational turn: the plugin's isNewGeneration() treats
+        // every audio/text delta as a new "generation" (see node_modules/@livekit/
+        // agents-plugin-google/dist/realtime/realtime_api.js), so this fires many times
+        // per turn, each measuring chunk-to-chunk timing (~0ms) rather than real
+        // end-of-utterance-to-first-audio latency. Logged for visibility only — NOT
+        // pushed into perTurn, unlike the eou/llm/tts path above. Fabricating fake
+        // per-turn totals from this would show near-0ms "latency," which is wrong and
+        // was confirmed on a real call (Call Performance showed 0.0-0.1s).
         console.log(
           `[LATENCY] request_id=${m.requestId} stage=realtime ttft=${Math.round(m.ttftMs)}ms ` +
             `input_tokens=${m.inputTokens} output_tokens=${m.outputTokens}`
         );
-        if (m.ttftMs >= 0) {
-          perTurn.push({
-            speechId: m.requestId,
-            eouDelayMs: 0,
-            llmTtftMs: Math.round(m.ttftMs),
-            ttsTtfbMs: 0,
-            totalMs: Math.round(m.ttftMs),
-          });
-        }
-        realtimeInputTextTokens += m.inputTokenDetails.textTokens;
-        realtimeInputAudioTokens += m.inputTokenDetails.audioTokens;
-        realtimeOutputTextTokens += m.outputTokenDetails.textTokens;
-        realtimeOutputAudioTokens += m.outputTokenDetails.audioTokens;
+        // Token counts appear to be a running cumulative total (each event's numbers keep
+        // growing through the call, consistent with Gemini's usageMetadata semantics), not
+        // a per-event delta — confirmed indirectly: summing every event inflated a real
+        // 4-minute call's cost to ~3x a hand-computed estimate. Assignment (not +=) here
+        // keeps only the latest snapshot, which is the correct running total by the time
+        // the call ends.
+        realtimeInputTextTokens = m.inputTokenDetails.textTokens;
+        realtimeInputAudioTokens = m.inputTokenDetails.audioTokens;
+        realtimeOutputTextTokens = m.outputTokenDetails.textTokens;
+        realtimeOutputAudioTokens = m.outputTokenDetails.audioTokens;
         break;
       }
       default:
