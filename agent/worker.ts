@@ -1,5 +1,9 @@
 import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { ReadableStream } from 'node:stream/web';
+import { AudioFrame } from '@livekit/rtc-node';
 import {
   defineAgent,
   cli,
@@ -28,6 +32,78 @@ import { DEFAULT_VOICE_PIPELINE, isVoicePipeline, type VoicePipeline } from '../
 const FALLBACK_INSTRUCTIONS =
   'You are a friendly, helpful voice assistant answering phone calls for a healthcare practice. ' +
   'Keep responses brief and conversational, ask clarifying questions when needed, and be polite at all times.';
+
+// Pre-recorded greeting (see agent/assets/priya-greeting.wav): played via session.say({ audio })
+// instead of live TTS generation, so the very first thing every caller hears is a fixed, glitch-free
+// clip rather than something a live pipeline has to render under real-time network/model conditions.
+// The tradeoff: this text must always match what's actually spoken in the WAV file exactly — unlike
+// the old generateReply()-based greeting, it does NOT read from the dashboard's configurable Welcome
+// Message field. Changing the wording means re-recording/re-generating the audio and replacing the
+// file, not just editing a setting.
+const GREETING_TEXT =
+  'Hello, and welcome to RegenOrthoSport! This is Priya, your digital assistant. How can I help you today?';
+const GREETING_AUDIO_PATH = join(dirname(fileURLToPath(import.meta.url)), 'assets', 'priya-greeting.wav');
+
+/**
+ * Minimal 16-bit PCM WAV parser — just enough to read the fixed greeting asset above, not a
+ * general-purpose decoder. Throws on anything else (compressed WAV, non-16-bit, missing chunks)
+ * rather than silently producing garbled audio.
+ */
+function parseWavPcm16(buffer: Buffer): { data: Int16Array; sampleRate: number; channels: number } {
+  if (buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
+    throw new Error('Not a valid WAV file (missing RIFF/WAVE header).');
+  }
+  let offset = 12;
+  let sampleRate = 0;
+  let channels = 0;
+  let bitsPerSample = 0;
+  let dataStart = -1;
+  let dataLength = 0;
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString('ascii', offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    if (chunkId === 'fmt ') {
+      channels = buffer.readUInt16LE(offset + 10);
+      sampleRate = buffer.readUInt32LE(offset + 12);
+      bitsPerSample = buffer.readUInt16LE(offset + 22);
+    } else if (chunkId === 'data') {
+      dataStart = offset + 8;
+      dataLength = chunkSize;
+    }
+    // Chunks are word-aligned: a chunk with odd size has one byte of padding after it.
+    offset += 8 + chunkSize + (chunkSize % 2);
+  }
+  if (dataStart === -1) throw new Error('WAV file has no data chunk.');
+  if (bitsPerSample !== 16) throw new Error(`Expected 16-bit PCM WAV, got ${bitsPerSample}-bit.`);
+
+  const pcmBytes = buffer.subarray(dataStart, dataStart + dataLength);
+  // Copy into a fresh, aligned ArrayBuffer — Int16Array requires an even byte offset, which
+  // buffer.subarray()'s underlying offset isn't guaranteed to have.
+  const aligned = new Uint8Array(pcmBytes.length);
+  aligned.set(pcmBytes);
+  const data = new Int16Array(aligned.buffer);
+  return { data, sampleRate, channels };
+}
+
+/** Builds a ReadableStream<AudioFrame> from the pre-recorded greeting WAV, chunked into 20ms frames. */
+function buildGreetingAudioStream(): ReadableStream<AudioFrame> {
+  const { data, sampleRate, channels } = parseWavPcm16(readFileSync(GREETING_AUDIO_PATH));
+  const samplesPerChannelPerFrame = Math.floor((sampleRate * 20) / 1000);
+  const frameLength = samplesPerChannelPerFrame * channels;
+  let position = 0;
+  return new ReadableStream<AudioFrame>({
+    pull(controller) {
+      if (position >= data.length) {
+        controller.close();
+        return;
+      }
+      const end = Math.min(position + frameLength, data.length);
+      const chunk = data.slice(position, end);
+      controller.enqueue(new AudioFrame(chunk, sampleRate, channels, Math.floor(chunk.length / channels)));
+      position = end;
+    },
+  });
+}
 
 /** Fetches the persisted agent persona (system prompt + welcome message) from the dashboard. */
 async function fetchAgentSettings(): Promise<{
@@ -963,11 +1039,10 @@ export default defineAgent({
       console.warn('[RECORDING] Skipping egress: egressClient is null.');
     }
 
-    await session.generateReply({
-      instructions: settings?.welcomeMessage
-        ? `Greet the caller with exactly: "${settings.welcomeMessage}"`
-        : 'Greet the caller warmly and ask how you can help them today.',
-    });
+    // Pre-recorded, not generated live (see GREETING_TEXT comment) — bypasses TTS/LLM entirely
+    // via session.say()'s `audio` option, so the greeting is identical and glitch-free on every
+    // call regardless of which pipeline is active.
+    session.say(GREETING_TEXT, { audio: buildGreetingAudioStream() });
   },
 });
 
