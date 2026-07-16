@@ -971,7 +971,15 @@ export default defineAgent({
           apiKey: process.env.GEMINI_API_KEY,
           thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET, thinkingLevel: GEMINI_THINKING_LEVEL as any },
         }),
-        tts: new sarvam.TTS({ model: models.ttsModel as any, speaker: models.ttsVoice, targetLanguageCode: 'en-IN' }),
+        tts: new sarvam.TTS({
+          model: models.ttsModel as any,
+          speaker: models.ttsVoice,
+          targetLanguageCode: 'en-IN',
+          // v3-only ("voice variation," ignored when model resolves to v2 — see
+          // node_modules/@livekit/agents-plugin-sarvam/dist/tts.js's resolveOptions).
+          // SDK default is 0.6, which read as flat/monotone on a real test call.
+          temperature: 1.0,
+        }),
         turnHandling: {
           endpointing: { minDelay: ENDPOINTING_MIN_DELAY_MS, maxDelay: ENDPOINTING_MAX_DELAY_MS },
         },
