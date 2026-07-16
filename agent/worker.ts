@@ -265,6 +265,18 @@ const GEMINI_LIVE_PIPELINE_DEFAULTS = {
   voice: 'Puck',
 };
 
+// Sarvam's /chat/completions endpoint is OpenAI-spec-compatible (Authorization: Bearer,
+// same request/response shape — confirmed via docs.sarvam.ai), so this reuses the
+// openai.LLM plugin with a custom baseURL instead of writing a new adapter class.
+// sarvam-30b picked over sarvam-105b as the default: ~40% cheaper per token (see
+// lib/pricing/call-cost.ts's LLM_PRICING) and a receptionist role's instruction-following
+// needs are modest — untested against 105b for this workload, revisit if quality issues
+// show up on real calls.
+const SARVAM_LLM_BASE_URL = 'https://api.sarvam.ai/v1';
+const SARVAM_PIPELINE_DEFAULTS = {
+  llmModel: 'sarvam-30b',
+};
+
 /** Fetches the tenant's chosen LLM/STT/TTS models and TTS voice from the Providers page, falling back to defaults. */
 async function fetchProviderModels(): Promise<typeof MODEL_DEFAULTS> {
   const appUrl = process.env.APP_URL;
@@ -962,6 +974,30 @@ export default defineAgent({
           voice: GEMINI_LIVE_PIPELINE_DEFAULTS.voice as any,
         }),
       });
+    } else if (voicePipeline === 'sarvam_full') {
+      // Sarvam's own STT/TTS (same as gemini_sarvam) paired with Sarvam's LLM instead of
+      // Gemini's — see SARVAM_LLM_BASE_URL comment for why this reuses openai.LLM rather
+      // than a custom adapter. reasoningEffort: 'low' favors latency over reasoning depth,
+      // matching the same intent as GEMINI_THINKING_BUDGET=0 for the Gemini pipeline.
+      session = new voice.AgentSession({
+        vad: ctx.proc.userData.vad as silero.VAD,
+        stt: new sarvam.STT({ model: models.sttModel as any, languageCode: 'en-IN' }),
+        llm: new openai.LLM({
+          apiKey: process.env.SARVAM_API_KEY,
+          baseURL: SARVAM_LLM_BASE_URL,
+          model: SARVAM_PIPELINE_DEFAULTS.llmModel,
+          reasoningEffort: 'low',
+        }),
+        tts: new sarvam.TTS({
+          model: models.ttsModel as any,
+          speaker: models.ttsVoice,
+          targetLanguageCode: 'en-IN',
+          temperature: 1.0,
+        }),
+        turnHandling: {
+          endpointing: { minDelay: ENDPOINTING_MIN_DELAY_MS, maxDelay: ENDPOINTING_MAX_DELAY_MS },
+        },
+      });
     } else {
       session = new voice.AgentSession({
         vad: ctx.proc.userData.vad as silero.VAD,
@@ -991,7 +1027,9 @@ export default defineAgent({
         ? OPENAI_PIPELINE_DEFAULTS.llmModel
         : voicePipeline === 'gemini_native'
           ? GEMINI_LIVE_PIPELINE_DEFAULTS.model
-          : geminiModel;
+          : voicePipeline === 'sarvam_full'
+            ? SARVAM_PIPELINE_DEFAULTS.llmModel
+            : geminiModel;
 
     attachLatencyLogging(session, {
       voicePipeline,

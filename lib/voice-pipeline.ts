@@ -3,7 +3,7 @@
 // per-tenant via agent_settings.voice_pipeline. Keep in sync with the branch
 // in worker.ts's entrypoint that constructs the AgentSession for each.
 
-export const VOICE_PIPELINES = ["gemini_sarvam", "gemini_native", "openai_full"] as const;
+export const VOICE_PIPELINES = ["gemini_sarvam", "gemini_native", "openai_full", "sarvam_full"] as const;
 export type VoicePipeline = (typeof VOICE_PIPELINES)[number];
 
 export const VOICE_PIPELINE_INFO: Record<VoicePipeline, { label: string; description: string }> = {
@@ -19,6 +19,11 @@ export const VOICE_PIPELINE_INFO: Record<VoicePipeline, { label: string; descrip
   openai_full: {
     label: "OpenAI (Whisper + GPT + TTS)",
     description: "OpenAI Whisper for speech-to-text, GPT for the LLM, and OpenAI TTS for the voice — a fully separate stack from Gemini/Sarvam.",
+  },
+  sarvam_full: {
+    label: "Sarvam (LLM + STT + TTS)",
+    description:
+      "Sarvam-30B for the LLM, alongside Sarvam's own speech-to-text and text-to-speech. Roughly 10x cheaper per token than Gemini, but Indian-language instruction-following and booking-flow reliability are unverified — test thoroughly before relying on it for real patients.",
   },
 };
 

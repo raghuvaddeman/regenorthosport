@@ -23,6 +23,12 @@ export const INR_PER_USD = 95.5;
 export const LLM_PRICING: Record<string, { inputPerMTokUsd: number; outputPerMTokUsd: number }> = {
   "gemini-3.1-flash-lite": { inputPerMTokUsd: 0.25, outputPerMTokUsd: 1.5 },
   "gpt-5-mini": { inputPerMTokUsd: 0.25, outputPerMTokUsd: 2.0 },
+  // Sarvam publishes these in INR (₹2.5/₹10 per 1M input/output tokens as of 2026-07-16,
+  // per docs.sarvam.ai) — converted to USD/1M here to match this table's unit, so the
+  // conversion undoes itself back to the original INR rate in computeStandardCallCost().
+  "sarvam-30b": { inputPerMTokUsd: 2.5 / INR_PER_USD, outputPerMTokUsd: 10 / INR_PER_USD },
+  // ₹4/₹16 per 1M input/output tokens.
+  "sarvam-105b": { inputPerMTokUsd: 4 / INR_PER_USD, outputPerMTokUsd: 16 / INR_PER_USD },
 };
 
 // STT pricing, keyed by model name — Sarvam (gemini_sarvam) and OpenAI Whisper (openai_full).

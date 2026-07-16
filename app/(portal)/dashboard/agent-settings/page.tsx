@@ -395,7 +395,7 @@ export default function AgentSettingsPage() {
             title="Voice Pipeline"
             description="Which speech-to-text/LLM/text-to-speech stack handles calls. Switch to compare quality, latency, and cost for your business — test with a real call before relying on a new option."
           >
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {VOICE_PIPELINES.map((pipeline) => {
                 const info = VOICE_PIPELINE_INFO[pipeline];
                 const selected = voicePipeline === pipeline;
