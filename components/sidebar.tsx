@@ -10,6 +10,7 @@ import {
   UserCog, PhoneOutgoing, MessagesSquare, Gauge, Zap, UserPlus
 } from "lucide-react";
 import { TeamModal } from "@/components/team-modal";
+import { canAccessPath, canManageTeam, roleOf } from "@/lib/roles";
 
 type NavItem = {
   label: string;
@@ -145,6 +146,8 @@ function ProfileMenu() {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { user } = useUser();
+  const role = roleOf(user?.publicMetadata);
   const [isOpen, setIsOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
 
@@ -178,11 +181,17 @@ export default function Sidebar() {
         </div>
 
         <nav className="flex-1 overflow-y-auto p-4 space-y-6">
-          {navigationData.map((group, gIdx) => (
+          {navigationData.map((group, gIdx) => {
+            const visibleItems = group.items.filter((item) =>
+              item.isAction ? canManageTeam(role) : canAccessPath(role, item.href)
+            );
+            if (visibleItems.length === 0) return null;
+
+            return (
             <div key={gIdx} className="space-y-1.5">
               <h4 className="px-3 text-[10px] font-medium uppercase tracking-wider text-gray-400 dark:text-zinc-500">{group.groupName}</h4>
               <ul className="space-y-0.5">
-                {group.items.map((item, iIdx) => {
+                {visibleItems.map((item, iIdx) => {
                   const isActive = item.href === "/dashboard" ? pathname === "/dashboard" : pathname === item.href || pathname.startsWith(item.href + "/");
                   const Icon = item.icon;
 
@@ -219,7 +228,8 @@ export default function Sidebar() {
                 })}
               </ul>
             </div>
-          ))}
+            );
+          })}
         </nav>
 
         <div className="border-t border-gray-200 p-4 dark:border-zinc-600">

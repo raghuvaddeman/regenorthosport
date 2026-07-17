@@ -2,19 +2,34 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useClerk } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
+import { useClerk, useUser } from "@clerk/nextjs";
+import { useRouter, usePathname } from "next/navigation";
 import { AudioPlayerProvider } from "@/components/audio-player";
 import { CallsProvider, useCallsContext } from "@/lib/calls-context";
 import Sidebar from "@/components/sidebar";
 import { Moon, Sun, LogOut, RefreshCw, AlertCircle } from "lucide-react";
+import { canAccessPath, roleOf } from "@/lib/roles";
 
 function PortalShell({ children }: { children: React.ReactNode }) {
   const [dark, setDark] = useState(false);
 
   const { signOut } = useClerk();
+  const { user, isLoaded } = useUser();
   const router = useRouter();
+  const pathname = usePathname();
   const { calls, loading, error, refresh } = useCallsContext();
+
+  // Nav links are hidden per-role in the sidebar, but that alone doesn't stop
+  // a bookmarked URL or the back button — re-check on every navigation and
+  // bounce back to the dashboard root if this role can't open the page.
+  const role = roleOf(user?.publicMetadata);
+  const allowed = !isLoaded || canAccessPath(role, pathname);
+
+  useEffect(() => {
+    if (isLoaded && !canAccessPath(role, pathname)) {
+      router.replace("/dashboard");
+    }
+  }, [isLoaded, role, pathname, router]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -78,7 +93,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
               </div>
             )}
 
-            {children}
+            {allowed ? children : null}
           </div>
         </main>
       </div>

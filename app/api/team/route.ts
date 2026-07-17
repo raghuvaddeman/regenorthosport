@@ -1,18 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, clerkClient } from '@clerk/nextjs/server';
+import { canManageTeam, DEFAULT_ROLE, isRole, roleOf, type Role } from '@/lib/roles';
 
-// Tenant (client_id) is derived from the signed-in Clerk session on the
-// server — same pattern as /api/agent-settings, /api/providers, /api/calls.
-async function getClientIdFromSession(): Promise<string | null> {
+// Tenant (client_id) + role are derived from the signed-in Clerk session on
+// the server — same pattern as /api/agent-settings, /api/providers, /api/calls.
+// The JWT's sessionClaims.metadata claim can go stale until the user's next
+// sign-in, so fall back to a live Clerk lookup for whichever field is missing.
+async function getSessionInfo(): Promise<{ userId: string; clientId: string; role: Role } | null> {
   const { userId, sessionClaims } = await auth();
   if (!userId) return null;
 
-  const fromToken = (sessionClaims?.metadata as { clientId?: string } | undefined)?.clientId;
-  if (fromToken) return fromToken;
+  const tokenMeta = sessionClaims?.metadata as { clientId?: string; role?: string } | undefined;
+  let clientId = tokenMeta?.clientId;
+  let role = isRole(tokenMeta?.role) ? tokenMeta.role : undefined;
 
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  return (user.publicMetadata.clientId as string | undefined) ?? null;
+  if (!clientId || !role) {
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
+    clientId = clientId ?? (user.publicMetadata.clientId as string | undefined);
+    role = role ?? roleOf(user.publicMetadata);
+  }
+
+  if (!clientId) return null;
+  return { userId, clientId, role: role ?? DEFAULT_ROLE };
 }
 
 function clientIdOf(publicMetadata: Record<string, unknown> | null | undefined): string | undefined {
@@ -25,11 +35,11 @@ function clientIdOf(publicMetadata: Record<string, unknown> | null | undefined):
  */
 export async function GET() {
   try {
-    const { userId } = await auth();
-    const clientId = await getClientIdFromSession();
-    if (!userId || !clientId) {
+    const session = await getSessionInfo();
+    if (!session) {
       return NextResponse.json({ success: false, error: 'Unauthorized: Missing valid tenant identifier.' }, { status: 401 });
     }
+    const { userId, clientId, role: callerRole } = session;
 
     const client = await clerkClient();
     const [userList, invitationList] = await Promise.all([
@@ -49,29 +59,35 @@ export async function GET() {
           email: primaryEmail,
           imageUrl: u.imageUrl,
           isYou: u.id === userId,
+          role: roleOf(u.publicMetadata),
           createdAt: u.createdAt,
         };
       });
 
     const invitations = invitationList.data
       .filter((i) => clientIdOf(i.publicMetadata) === clientId)
-      .map((i) => ({ id: i.id, email: i.emailAddress, createdAt: i.createdAt }));
+      .map((i) => ({ id: i.id, email: i.emailAddress, role: roleOf(i.publicMetadata), createdAt: i.createdAt }));
 
-    return NextResponse.json({ success: true, data: { members, invitations } });
+    return NextResponse.json({ success: true, data: { members, invitations, callerRole } });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
 /**
- * POST: { action: 'invite', email } sends a Clerk invitation scoped to the
- * caller's tenant; { action: 'revoke', invitationId } cancels a pending one.
+ * POST: { action: 'invite', email, role } sends a Clerk invitation scoped to
+ * the caller's tenant; { action: 'revoke', invitationId } cancels a pending
+ * one. Both actions are Super Admin only.
  */
 export async function POST(request: NextRequest) {
   try {
-    const clientId = await getClientIdFromSession();
-    if (!clientId) {
+    const session = await getSessionInfo();
+    if (!session) {
       return NextResponse.json({ success: false, error: 'Unauthorized: Missing valid tenant identifier.' }, { status: 401 });
+    }
+    const { clientId, role: callerRole } = session;
+    if (!canManageTeam(callerRole)) {
+      return NextResponse.json({ success: false, error: 'Only Super Admins can manage the team.' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -83,16 +99,19 @@ export async function POST(request: NextRequest) {
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return NextResponse.json({ success: false, error: 'Enter a valid email address.' }, { status: 400 });
       }
+      if (!isRole(body.role)) {
+        return NextResponse.json({ success: false, error: 'Choose a role for this teammate.' }, { status: 400 });
+      }
 
       const invitation = await client.invitations.createInvitation({
         emailAddress: email,
-        publicMetadata: { clientId },
+        publicMetadata: { clientId, role: body.role },
         notify: true,
       });
 
       return NextResponse.json({
         success: true,
-        data: { id: invitation.id, email: invitation.emailAddress, createdAt: invitation.createdAt },
+        data: { id: invitation.id, email: invitation.emailAddress, role: body.role, createdAt: invitation.createdAt },
       });
     }
 
