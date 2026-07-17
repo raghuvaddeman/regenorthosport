@@ -79,3 +79,10 @@ export function canAccessPath(role: Role, pathname: string): boolean {
 export function canManageTeam(role: Role): boolean {
   return role === "super_admin";
 }
+
+// True for any role above the front-line Agent tier — used to gate API
+// routes that back Manager+ dashboard pages (campaigns, agent config,
+// providers, telephony) without tying the check to one specific path.
+export function isManagerOrAbove(role: Role): boolean {
+  return role !== "agent";
+}

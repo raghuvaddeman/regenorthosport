@@ -1,29 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth, clerkClient } from '@clerk/nextjs/server';
-import { canManageTeam, DEFAULT_ROLE, isRole, roleOf, type Role } from '@/lib/roles';
-
-// Tenant (client_id) + role are derived from the signed-in Clerk session on
-// the server — same pattern as /api/agent-settings, /api/providers, /api/calls.
-// The JWT's sessionClaims.metadata claim can go stale until the user's next
-// sign-in, so fall back to a live Clerk lookup for whichever field is missing.
-async function getSessionInfo(): Promise<{ userId: string; clientId: string; role: Role } | null> {
-  const { userId, sessionClaims } = await auth();
-  if (!userId) return null;
-
-  const tokenMeta = sessionClaims?.metadata as { clientId?: string; role?: string } | undefined;
-  let clientId = tokenMeta?.clientId;
-  let role = isRole(tokenMeta?.role) ? tokenMeta.role : undefined;
-
-  if (!clientId || !role) {
-    const client = await clerkClient();
-    const user = await client.users.getUser(userId);
-    clientId = clientId ?? (user.publicMetadata.clientId as string | undefined);
-    role = role ?? roleOf(user.publicMetadata);
-  }
-
-  if (!clientId) return null;
-  return { userId, clientId, role: role ?? DEFAULT_ROLE };
-}
+import { clerkClient } from '@clerk/nextjs/server';
+import { canManageTeam, isRole, roleOf } from '@/lib/roles';
+import { getSessionInfo } from '@/lib/auth/session';
 
 function clientIdOf(publicMetadata: Record<string, unknown> | null | undefined): string | undefined {
   return (publicMetadata as { clientId?: string } | null | undefined)?.clientId;
@@ -40,6 +18,9 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Unauthorized: Missing valid tenant identifier.' }, { status: 401 });
     }
     const { userId, clientId, role: callerRole } = session;
+    if (!canManageTeam(callerRole)) {
+      return NextResponse.json({ success: false, error: 'Only Super Admins can view the team.' }, { status: 403 });
+    }
 
     const client = await clerkClient();
     const [userList, invitationList] = await Promise.all([

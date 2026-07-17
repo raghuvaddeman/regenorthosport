@@ -7,23 +7,16 @@
 //     id is a UUID the worker only learns from a room name it dialed itself.
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth, clerkClient } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isAuthorizedInternalRequest } from "@/lib/telephony/internal-auth";
 import { CONDITIONS, type Condition } from "@/lib/campaigns/prompt-template";
+import { getSessionInfo } from "@/lib/auth/session";
+import { isManagerOrAbove } from "@/lib/roles";
 
 async function getClientIdFromSession(): Promise<string | null> {
-  const { userId, sessionClaims } = await auth();
-  if (!userId) return null;
-
-  const fromToken = (
-    sessionClaims?.metadata as { clientId?: string } | undefined
-  )?.clientId;
-  if (fromToken) return fromToken;
-
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  return (user.publicMetadata.clientId as string | undefined) ?? null;
+  const session = await getSessionInfo();
+  if (!session || !isManagerOrAbove(session.role)) return null;
+  return session.clientId;
 }
 
 const TABLE_CAMPAIGNS = "bulk_campaigns";

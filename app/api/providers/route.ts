@@ -1,23 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth, clerkClient } from '@clerk/nextjs/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { encrypt, maskSecret } from '@/lib/crypto/credentials';
 import { isAuthorizedInternalRequest } from '@/lib/telephony/internal-auth';
+import { getSessionInfo } from '@/lib/auth/session';
+import { isManagerOrAbove } from '@/lib/roles';
 
 // Tenant (client_id) is derived from the signed-in Clerk session on the
-// server — NEVER from a request body. The JWT's `sessionClaims.metadata`
-// claim can go stale until the user's next sign-in, so fall back to a live
-// Clerk lookup (same pattern as /api/calls) instead of failing outright.
+// server — NEVER from a request body. Providers is a Manager+ page (not
+// Agent), so this also rejects a signed-in Agent even though they're on the
+// right tenant.
 async function getClientIdFromSession(): Promise<string | null> {
-  const { userId, sessionClaims } = await auth();
-  if (!userId) return null;
-
-  const fromToken = (sessionClaims?.metadata as { clientId?: string } | undefined)?.clientId;
-  if (fromToken) return fromToken;
-
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  return (user.publicMetadata.clientId as string | undefined) ?? null;
+  const session = await getSessionInfo();
+  if (!session || !isManagerOrAbove(session.role)) return null;
+  return session.clientId;
 }
 
 /**
@@ -63,14 +58,12 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    const clientId = await getClientIdFromSession();
-    const actorUserId = userId || 'unknown_user';
-
-    // Strict Tenant Isolation Check
-    if (!clientId) {
+    const session = await getSessionInfo();
+    if (!session || !isManagerOrAbove(session.role)) {
       return NextResponse.json({ success: false, error: 'Unauthorized: Missing valid tenant identifier.' }, { status: 401 });
     }
+    const { clientId, userId } = session;
+    const actorUserId = userId || 'unknown_user';
 
     const body = await request.json();
     const { provider_key, provider_name, category, secrets, config_json } = body;

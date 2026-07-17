@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { getSessionInfo } from '@/lib/auth/session';
+import { isManagerOrAbove } from '@/lib/roles';
 import {
   createVobizInboundTrunk,
   createVobizOutboundTrunk,
@@ -19,8 +20,8 @@ import { isAuthorizedInternalRequest } from '@/lib/telephony/internal-auth';
  */
 export async function GET() {
   try {
-    const { userId } = await auth();
-    if (!userId) {
+    const session = await getSessionInfo();
+    if (!session || !isManagerOrAbove(session.role)) {
       return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
     }
 
@@ -50,9 +51,11 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId && !isAuthorizedInternalRequest(request)) {
-      return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
+    if (!isAuthorizedInternalRequest(request)) {
+      const session = await getSessionInfo();
+      if (!session || !isManagerOrAbove(session.role)) {
+        return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
+      }
     }
 
     const body = await request.json();

@@ -19,9 +19,9 @@
 //   CLERK_SECRET_KEY=sk_xxx
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth, clerkClient } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isAuthorizedInternalRequest } from "@/lib/telephony/internal-auth";
+import { getSessionInfo } from "@/lib/auth/session";
 import { computeCallCost, computeClassificationCostInr, type CallUsage } from "@/lib/pricing/call-cost";
 import type { CallLatencyMetrics } from "@/lib/observability/call-latency";
 import {
@@ -36,22 +36,6 @@ import {
 } from "@/lib/call-classification";
 
 export const dynamic = "force-dynamic";
-
-/* ------------------------- session → tenant ------------------------- */
-
-async function getClientIdFromSession(): Promise<string | null> {
-  const { userId, sessionClaims } = await auth();
-  if (!userId) return null;
-
-  const fromToken = (
-    sessionClaims?.metadata as { clientId?: string } | undefined
-  )?.clientId;
-  if (fromToken) return fromToken;
-
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  return (user.publicMetadata.clientId as string | undefined) ?? null;
-}
 
 /* --------------------------- Supabase fetch -------------------------- */
 
@@ -119,10 +103,11 @@ function normalizeRow(row: DbCallRow) {
 }
 
 export async function GET() {
-  const clientId = await getClientIdFromSession();
-  if (!clientId) {
+  const session = await getSessionInfo();
+  if (!session) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }
+  const { clientId, role } = session;
 
   let supabase;
   try {
@@ -170,7 +155,22 @@ export async function GET() {
     );
   }
 
-  const calls = rows.map(normalizeRow);
+  let calls = rows.map(normalizeRow);
+
+  // Agents have no Billing or Call Performance page — strip cost figures
+  // from the payload itself so they can't be read via devtools/network tab
+  // either, not just hidden from the pages that render them.
+  if (role === "agent") {
+    calls = calls.map((c) => ({
+      ...c,
+      costInr: 0,
+      llmCostInr: 0,
+      sttCostInr: 0,
+      ttsCostInr: 0,
+      livekitCostInr: 0,
+    }));
+  }
+
   return NextResponse.json({ calls });
 }
 

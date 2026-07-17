@@ -1,22 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth, clerkClient } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isAuthorizedInternalRequest } from "@/lib/telephony/internal-auth";
 import { DEFAULT_VOICE_PIPELINE, isVoicePipeline } from "@/lib/voice-pipeline";
-
-// Tenant (client_id) is derived from the signed-in Clerk session on the
-// server for dashboard requests — same pattern as /api/providers, /api/calls.
-async function getClientIdFromSession(): Promise<string | null> {
-  const { userId, sessionClaims } = await auth();
-  if (!userId) return null;
-
-  const fromToken = (sessionClaims?.metadata as { clientId?: string } | undefined)?.clientId;
-  if (fromToken) return fromToken;
-
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  return (user.publicMetadata.clientId as string | undefined) ?? null;
-}
+import { getSessionInfo } from "@/lib/auth/session";
+import { isManagerOrAbove } from "@/lib/roles";
 
 const DEFAULTS = {
   agentName: "Priya",
@@ -370,10 +357,11 @@ export async function GET(request: NextRequest) {
         );
       }
     } else {
-      clientId = await getClientIdFromSession();
-      if (!clientId) {
+      const session = await getSessionInfo();
+      if (!session || !isManagerOrAbove(session.role)) {
         return NextResponse.json({ success: false, error: "Unauthorized." }, { status: 401 });
       }
+      clientId = session.clientId;
     }
 
     const supabase = getSupabaseAdmin();
@@ -409,10 +397,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const clientId = await getClientIdFromSession();
-    if (!clientId) {
+    const session = await getSessionInfo();
+    if (!session || !isManagerOrAbove(session.role)) {
       return NextResponse.json({ success: false, error: "Unauthorized." }, { status: 401 });
     }
+    const { clientId } = session;
 
     const body = await request.json();
     const { agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, voicePipeline } = body;

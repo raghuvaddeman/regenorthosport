@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { isAuthorizedInternalRequest } from '@/lib/telephony/internal-auth';
+import { getSessionInfo } from '@/lib/auth/session';
+import { isManagerOrAbove } from '@/lib/roles';
 
 // The worker is considered "online" if it has reported in within this window.
 // Should stay comfortably above the worker's own heartbeat interval (15s).
@@ -16,8 +17,8 @@ const WORKER_ID = 'default';
  */
 export async function GET() {
   try {
-    const { userId } = await auth();
-    if (!userId) {
+    const session = await getSessionInfo();
+    if (!session || !isManagerOrAbove(session.role)) {
       return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
     }
 
