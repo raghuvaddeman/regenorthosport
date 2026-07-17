@@ -7,8 +7,9 @@ import { useUser, useClerk } from "@clerk/nextjs";
 import {
   LayoutDashboard, PhoneCall, Users, Settings, Database,
   PhoneForwarded, FileText, BrainCircuit, ShieldAlert, Radio, Phone, CreditCard, Plug, Menu, X,
-  UserCog, PhoneOutgoing, MessagesSquare, Gauge, Zap
+  UserCog, PhoneOutgoing, MessagesSquare, Gauge, Zap, Plus, UserPlus
 } from "lucide-react";
+import { TeamModal } from "@/components/team-modal";
 
 type NavItem = {
   label: string;
@@ -62,6 +63,52 @@ const navigationData: { groupName: string; items: NavItem[] }[] = [
     ],
   },
 ];
+
+function AddNewMenu() {
+  const [open, setOpen] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="flex w-full items-center gap-2 rounded-md border border-dashed border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-500 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 dark:border-zinc-600 dark:text-zinc-400 dark:hover:border-brand-500/40 dark:hover:bg-brand-500/10 dark:hover:text-brand-400"
+      >
+        <Plus className="h-4 w-4" /> Add new
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-zinc-600 dark:bg-zinc-700">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              setTeamOpen(true);
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-zinc-200 dark:hover:bg-zinc-600/60"
+          >
+            <UserPlus className="h-4 w-4 text-gray-400 dark:text-zinc-400" /> Invite team member
+          </button>
+        </div>
+      )}
+
+      {teamOpen && <TeamModal onClose={() => setTeamOpen(false)} />}
+    </div>
+  );
+}
 
 function ProfileMenu() {
   const { user } = useUser();
@@ -171,6 +218,10 @@ export default function Sidebar() {
               />
             </div>
           </Link>
+        </div>
+
+        <div className="px-4 pt-4">
+          <AddNewMenu />
         </div>
 
         <nav className="flex-1 overflow-y-auto p-4 space-y-6">
