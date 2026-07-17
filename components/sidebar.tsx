@@ -7,7 +7,7 @@ import { useUser, useClerk } from "@clerk/nextjs";
 import {
   LayoutDashboard, PhoneCall, Users, Settings, Database,
   PhoneForwarded, FileText, BrainCircuit, ShieldAlert, Radio, Phone, CreditCard, Plug, Menu, X,
-  UserCog, PhoneOutgoing, MessagesSquare, Gauge, Zap, Plus, UserPlus
+  UserCog, PhoneOutgoing, MessagesSquare, Gauge, Zap, UserPlus
 } from "lucide-react";
 import { TeamModal } from "@/components/team-modal";
 
@@ -17,6 +17,7 @@ type NavItem = {
   icon: React.ElementType;
   isBeta?: boolean;
   isNew?: boolean;
+  isAction?: boolean;
 };
 
 const navigationData: { groupName: string; items: NavItem[] }[] = [
@@ -60,55 +61,10 @@ const navigationData: { groupName: string; items: NavItem[] }[] = [
       { label: "Phone Numbers", href: "/dashboard/numbers", icon: Phone },
       { label: "Call Performance", href: "/dashboard/performance", icon: Gauge },
       { label: "Billing & Usage", href: "/dashboard/billing", icon: CreditCard },
+      { label: "Invite Team", href: "", icon: UserPlus, isAction: true },
     ],
   },
 ];
-
-function AddNewMenu() {
-  const [open, setOpen] = useState(false);
-  const [teamOpen, setTeamOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="flex w-full items-center gap-2 rounded-md border border-dashed border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-500 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 dark:border-zinc-600 dark:text-zinc-400 dark:hover:border-brand-500/40 dark:hover:bg-brand-500/10 dark:hover:text-brand-400"
-      >
-        <Plus className="h-4 w-4" /> Add new
-      </button>
-
-      {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-zinc-600 dark:bg-zinc-700">
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              setTeamOpen(true);
-            }}
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-zinc-200 dark:hover:bg-zinc-600/60"
-          >
-            <UserPlus className="h-4 w-4 text-gray-400 dark:text-zinc-400" /> Invite team member
-          </button>
-        </div>
-      )}
-
-      {teamOpen && <TeamModal onClose={() => setTeamOpen(false)} />}
-    </div>
-  );
-}
 
 function ProfileMenu() {
   const { user } = useUser();
@@ -190,6 +146,7 @@ function ProfileMenu() {
 export default function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
 
   return (
     <>
@@ -220,10 +177,6 @@ export default function Sidebar() {
           </Link>
         </div>
 
-        <div className="px-4 pt-4">
-          <AddNewMenu />
-        </div>
-
         <nav className="flex-1 overflow-y-auto p-4 space-y-6">
           {navigationData.map((group, gIdx) => (
             <div key={gIdx} className="space-y-1.5">
@@ -232,6 +185,25 @@ export default function Sidebar() {
                 {group.items.map((item, iIdx) => {
                   const isActive = item.href === "/dashboard" ? pathname === "/dashboard" : pathname === item.href || pathname.startsWith(item.href + "/");
                   const Icon = item.icon;
+
+                  if (item.isAction) {
+                    return (
+                      <li key={iIdx}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTeamOpen(true);
+                            setIsOpen(false);
+                          }}
+                          className="flex w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-left text-sm font-medium text-gray-600 transition-all hover:bg-gray-50 hover:text-gray-900 dark:text-zinc-400 dark:hover:bg-zinc-700/50 dark:hover:text-zinc-200"
+                        >
+                          <Icon className="h-4 w-4 shrink-0 text-gray-400 dark:text-zinc-500" />
+                          <span>{item.label}</span>
+                        </button>
+                      </li>
+                    );
+                  }
+
                   return (
                     <li key={iIdx}>
                       <Link href={item.href} onClick={() => setIsOpen(false)} aria-current={isActive ? "page" : undefined} className={`flex items-center justify-between rounded-md px-3 py-1.5 text-sm font-medium transition-all ${isActive ? "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-400" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-zinc-400 dark:hover:bg-zinc-700/50 dark:hover:text-zinc-200"}`}>
@@ -254,6 +226,8 @@ export default function Sidebar() {
           <ProfileMenu />
         </div>
       </aside>
+
+      {teamOpen && <TeamModal onClose={() => setTeamOpen(false)} />}
     </>
   );
 }
