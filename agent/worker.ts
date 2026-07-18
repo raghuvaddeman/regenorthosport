@@ -21,6 +21,7 @@ import * as google from '@livekit/agents-plugin-google';
 import * as sarvam from '@livekit/agents-plugin-sarvam';
 import * as openai from '@livekit/agents-plugin-openai';
 import * as silero from '@livekit/agents-plugin-silero';
+import * as xai from '@livekit/agents-plugin-xai';
 import { EgressClient } from 'livekit-server-sdk';
 import { EncodedFileOutput, EncodedFileType, S3Upload } from '@livekit/protocol';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -275,6 +276,17 @@ const GEMINI_LIVE_PIPELINE_DEFAULTS = {
 const SARVAM_LLM_BASE_URL = 'https://api.sarvam.ai/v1';
 const SARVAM_PIPELINE_DEFAULTS = {
   llmModel: 'sarvam-30b',
+};
+
+// grok-voice-think-fast-1.0 pinned explicitly rather than the "grok-voice-latest"
+// alias xAI's docs point to for new integrations — keeps pricing (see
+// lib/pricing/call-cost.ts's REALTIME_DURATION_PRICING) and behavior reproducible
+// instead of silently changing underfoot when xAI repoints the alias.
+// grok-voice-fast-1.0 (no "think") is xAI's own docs' *legacy/deprecated* model,
+// not a leaner alternative — don't swap to it for latency reasons.
+const XAI_VOICE_PIPELINE_DEFAULTS = {
+  model: 'grok-voice-think-fast-1.0',
+  voice: 'eve',
 };
 
 /** Fetches the tenant's chosen LLM/STT/TTS models and TTS voice from the Providers page, falling back to defaults. */
@@ -886,17 +898,23 @@ function attachLatencyLogging(
               outputAudioTokens: realtimeOutputAudioTokens,
               callDurationSec: durationSec,
             }
-          : {
-              kind: 'standard',
-              llmModel: activeConfig.llmModel,
-              llmPromptTokens,
-              llmCompletionTokens,
-              sttModel: activeConfig.sttModel ?? 'unknown',
-              sttAudioDurationMs,
-              ttsModel: activeConfig.ttsModel ?? 'unknown',
-              ttsCharactersCount,
-              callDurationSec: durationSec,
-            };
+          : activeConfig.voicePipeline === 'grok_voice'
+            ? {
+                kind: 'realtime_duration',
+                llmModel: activeConfig.llmModel,
+                callDurationSec: durationSec,
+              }
+            : {
+                kind: 'standard',
+                llmModel: activeConfig.llmModel,
+                llmPromptTokens,
+                llmCompletionTokens,
+                sttModel: activeConfig.sttModel ?? 'unknown',
+                sttAudioDurationMs,
+                ttsModel: activeConfig.ttsModel ?? 'unknown',
+                ttsCharactersCount,
+                callDurationSec: durationSec,
+              };
 
       await reportCallCost({
         callUuid: activeConfig.callUuid,
@@ -974,6 +992,20 @@ export default defineAgent({
           voice: GEMINI_LIVE_PIPELINE_DEFAULTS.voice as any,
         }),
       });
+    } else if (voicePipeline === 'grok_voice') {
+      // Same fused-model shape as gemini_native (no vad/stt/tts/turnHandling) —
+      // xAI's Grok Voice Agent API extends OpenAI's Realtime API under the hood
+      // (@livekit/agents-plugin-xai's RealtimeModel subclasses openai.realtime.
+      // RealtimeModel), so it emits the same generic realtime_model_metrics
+      // events attachLatencyLogging already handles for gemini_native. Billed
+      // by connection duration, not tokens — see REALTIME_DURATION_PRICING.
+      session = new voice.AgentSession({
+        llm: new xai.realtime.RealtimeModel({
+          apiKey: process.env.XAI_API_KEY,
+          model: XAI_VOICE_PIPELINE_DEFAULTS.model,
+          voice: XAI_VOICE_PIPELINE_DEFAULTS.voice,
+        }),
+      });
     } else if (voicePipeline === 'sarvam_full') {
       // Sarvam's own STT/TTS (same as gemini_sarvam) paired with Sarvam's LLM instead of
       // Gemini's — see SARVAM_LLM_BASE_URL comment for why this reuses openai.LLM rather
@@ -1030,25 +1062,31 @@ export default defineAgent({
       });
     }
 
+    // Both fuse listening+speaking into one realtime connection — no separate
+    // STT/TTS stage or endpointing window to report for either.
+    const isFusedRealtimePipeline = voicePipeline === 'gemini_native' || voicePipeline === 'grok_voice';
+
     const pipelineLlmModel =
       voicePipeline === 'openai_full'
         ? OPENAI_PIPELINE_DEFAULTS.llmModel
         : voicePipeline === 'gemini_native'
           ? GEMINI_LIVE_PIPELINE_DEFAULTS.model
-          : voicePipeline === 'sarvam_full'
-            ? SARVAM_PIPELINE_DEFAULTS.llmModel
-            : geminiModel;
+          : voicePipeline === 'grok_voice'
+            ? XAI_VOICE_PIPELINE_DEFAULTS.model
+            : voicePipeline === 'sarvam_full'
+              ? SARVAM_PIPELINE_DEFAULTS.llmModel
+              : geminiModel;
 
     attachLatencyLogging(session, {
       voicePipeline,
       llmModel: pipelineLlmModel,
       classificationModel: geminiModel,
-      sttModel: voicePipeline === 'gemini_native' ? null : voicePipeline === 'openai_full' ? OPENAI_PIPELINE_DEFAULTS.sttModel : models.sttModel,
-      ttsModel: voicePipeline === 'gemini_native' ? null : voicePipeline === 'openai_full' ? OPENAI_PIPELINE_DEFAULTS.ttsModel : models.ttsModel,
+      sttModel: isFusedRealtimePipeline ? null : voicePipeline === 'openai_full' ? OPENAI_PIPELINE_DEFAULTS.sttModel : models.sttModel,
+      ttsModel: isFusedRealtimePipeline ? null : voicePipeline === 'openai_full' ? OPENAI_PIPELINE_DEFAULTS.ttsModel : models.ttsModel,
       thinkingBudget: GEMINI_THINKING_BUDGET,
       thinkingLevel: GEMINI_THINKING_LEVEL,
-      endpointingMinDelayMs: voicePipeline === 'gemini_native' ? null : ENDPOINTING_MIN_DELAY_MS,
-      endpointingMaxDelayMs: voicePipeline === 'gemini_native' ? null : ENDPOINTING_MAX_DELAY_MS,
+      endpointingMinDelayMs: isFusedRealtimePipeline ? null : ENDPOINTING_MIN_DELAY_MS,
+      endpointingMaxDelayMs: isFusedRealtimePipeline ? null : ENDPOINTING_MAX_DELAY_MS,
       callUuid,
       callDirection,
       callStartedAt,

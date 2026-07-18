@@ -1,9 +1,9 @@
 // lib/voice-pipeline.ts
-// The three voice-pipeline configurations agent/worker.ts can run, selected
+// The voice-pipeline configurations agent/worker.ts can run, selected
 // per-tenant via agent_settings.voice_pipeline. Keep in sync with the branch
 // in worker.ts's entrypoint that constructs the AgentSession for each.
 
-export const VOICE_PIPELINES = ["gemini_sarvam", "gemini_native", "openai_full", "sarvam_full"] as const;
+export const VOICE_PIPELINES = ["gemini_sarvam", "gemini_native", "openai_full", "sarvam_full", "grok_voice"] as const;
 export type VoicePipeline = (typeof VOICE_PIPELINES)[number];
 
 export const VOICE_PIPELINE_INFO: Record<VoicePipeline, { label: string; description: string }> = {
@@ -24,6 +24,11 @@ export const VOICE_PIPELINE_INFO: Record<VoicePipeline, { label: string; descrip
     label: "Sarvam (LLM + STT + TTS)",
     description:
       "Sarvam-30B for the LLM, alongside Sarvam's own speech-to-text and text-to-speech. Roughly 10x cheaper per token than Gemini, but Indian-language instruction-following and booking-flow reliability are unverified — test thoroughly before relying on it for real patients.",
+  },
+  grok_voice: {
+    label: "xAI Grok Voice",
+    description:
+      "xAI's single realtime voice model (like Gemini Native Audio) handles listening and speaking together. Billed by call duration ($3/hr) rather than tokens. Supports Hindi, but not the broader regional-language spread Sarvam covers — test before relying on it for real patients.",
   },
 };
 

@@ -1,11 +1,14 @@
-// Per-call cost estimation across all three voice pipelines (lib/voice-pipeline.ts):
-// Gemini LLM + Sarvam STT/TTS, Gemini Native Audio (realtime), and OpenAI
-// Whisper + GPT + TTS — plus LiveKit infra cost, common to all three.
+// Per-call cost estimation across all voice pipelines (lib/voice-pipeline.ts):
+// Gemini LLM + Sarvam STT/TTS, Gemini Native Audio (realtime), OpenAI
+// Whisper + GPT + TTS, Sarvam LLM + STT/TTS, and xAI Grok Voice (realtime)
+// — plus LiveKit infra cost, common to all of them.
 //
-// Rates verified against official pricing pages / OpenAI's own docs on 2026-07-15:
+// Rates verified against official pricing pages / vendor docs on 2026-07-15
+// (xAI added 2026-07-18):
 //   Gemini (text + Live API): https://ai.google.dev/gemini-api/docs/pricing
 //   Sarvam:                   https://docs.sarvam.ai/api-reference-docs/pricing
 //   OpenAI:                   https://developers.openai.com/api/docs/pricing
+//   xAI:                      https://docs.x.ai/developers/pricing
 //   LiveKit:                  https://livekit.com/pricing
 //
 // Does NOT include Vobiz's own PSTN/telephony billing — that's separate from
@@ -53,7 +56,7 @@ export const TTS_PRICING: Record<string, { inrPer10kChars: number }> = {
 // separate LLM/STT/TTS split above. Per-minute equivalents from the pricing
 // page ($0.005/min in, $0.018/min out) aren't used here since we get exact
 // token counts from RealtimeModelMetrics.
-export const GEMINI_LIVE_PRICING: Record<
+export const REALTIME_MODEL_PRICING: Record<
   string,
   { textInputPerMTokUsd: number; audioInputPerMTokUsd: number; textOutputPerMTokUsd: number; audioOutputPerMTokUsd: number }
 > = {
@@ -75,6 +78,15 @@ export const GEMINI_LIVE_PRICING: Record<
   },
 };
 
+// xAI Grok Voice (realtime, grok_voice pipeline) — unlike Gemini Live, xAI
+// bills this purely by connection duration ($0.05/min = $3/hr as of
+// docs.x.ai/developers/pricing on 2026-07-18), not by token counts, so it
+// gets its own flat-rate table and cost function below rather than reusing
+// REALTIME_MODEL_PRICING's per-token shape.
+export const REALTIME_DURATION_PRICING: Record<string, { usdPerHour: number }> = {
+  "grok-voice-think-fast-1.0": { usdPerHour: 3.0 },
+};
+
 // TODO(cost): confirm actual LiveKit plan tier — sipTrunkUsdPerMin is the
 // midpoint of the $0.003-0.004/min range, which varies by plan.
 export const LIVEKIT_PRICING = {
@@ -85,7 +97,8 @@ export const LIVEKIT_PRICING = {
 const DEFAULT_LLM_RATE = LLM_PRICING["gemini-3.1-flash-lite"];
 const DEFAULT_STT_RATE = STT_PRICING["saaras:v3"];
 const DEFAULT_TTS_RATE = TTS_PRICING["bulbul:v2"];
-const DEFAULT_GEMINI_LIVE_RATE = GEMINI_LIVE_PRICING["gemini-2.5-flash-native-audio-preview-12-2025"];
+const DEFAULT_REALTIME_RATE = REALTIME_MODEL_PRICING["gemini-2.5-flash-native-audio-preview-12-2025"];
+const DEFAULT_REALTIME_DURATION_RATE = REALTIME_DURATION_PRICING["grok-voice-think-fast-1.0"];
 
 export type StandardCallUsage = {
   kind: "standard";
@@ -112,7 +125,17 @@ export type RealtimeCallUsage = {
   callDurationSec: number;
 };
 
-export type CallUsage = StandardCallUsage | RealtimeCallUsage;
+// grok_voice's usage shape: also a fused model, but billed by connection
+// duration rather than tokens (see REALTIME_DURATION_PRICING) — no token
+// counts needed here even though the [LATENCY] logs still capture them for
+// visibility.
+export type RealtimeDurationCallUsage = {
+  kind: "realtime_duration";
+  llmModel: string;
+  callDurationSec: number;
+};
+
+export type CallUsage = StandardCallUsage | RealtimeCallUsage | RealtimeDurationCallUsage;
 
 export type CallCostBreakdown = {
   llmCostInr: number;
@@ -166,11 +189,11 @@ function computeStandardCallCost(usage: StandardCallUsage): CallCostBreakdown {
 }
 
 function computeRealtimeCallCost(usage: RealtimeCallUsage): CallCostBreakdown {
-  const rate = GEMINI_LIVE_PRICING[usage.llmModel];
+  const rate = REALTIME_MODEL_PRICING[usage.llmModel];
   if (!rate) {
-    console.warn(`No Gemini Live pricing entry for model "${usage.llmModel}", falling back to gemini-2.5-flash-native-audio-preview-12-2025 rate.`);
+    console.warn(`No realtime-model pricing entry for model "${usage.llmModel}", falling back to gemini-2.5-flash-native-audio-preview-12-2025 rate.`);
   }
-  const { textInputPerMTokUsd, audioInputPerMTokUsd, textOutputPerMTokUsd, audioOutputPerMTokUsd } = rate ?? DEFAULT_GEMINI_LIVE_RATE;
+  const { textInputPerMTokUsd, audioInputPerMTokUsd, textOutputPerMTokUsd, audioOutputPerMTokUsd } = rate ?? DEFAULT_REALTIME_RATE;
 
   const llmCostUsd =
     (usage.inputTextTokens / 1_000_000) * textInputPerMTokUsd +
@@ -191,8 +214,30 @@ function computeRealtimeCallCost(usage: RealtimeCallUsage): CallCostBreakdown {
   };
 }
 
+function computeRealtimeDurationCallCost(usage: RealtimeDurationCallUsage): CallCostBreakdown {
+  const rate = REALTIME_DURATION_PRICING[usage.llmModel];
+  if (!rate) {
+    console.warn(`No realtime-duration pricing entry for model "${usage.llmModel}", falling back to grok-voice-think-fast-1.0 rate.`);
+  }
+  const { usdPerHour } = rate ?? DEFAULT_REALTIME_DURATION_RATE;
+
+  const llmCostInr = (usage.callDurationSec / 3600) * usdPerHour * INR_PER_USD;
+  const livekitCostInr = computeLivekitCostInr(usage.callDurationSec);
+
+  return {
+    llmCostInr,
+    sttCostInr: 0,
+    ttsCostInr: 0,
+    livekitCostInr,
+    totalCostInr: llmCostInr + livekitCostInr,
+    pricingVersion: PRICING_VERSION,
+  };
+}
+
 export function computeCallCost(usage: CallUsage): CallCostBreakdown {
-  return usage.kind === "realtime" ? computeRealtimeCallCost(usage) : computeStandardCallCost(usage);
+  if (usage.kind === "realtime") return computeRealtimeCallCost(usage);
+  if (usage.kind === "realtime_duration") return computeRealtimeDurationCallCost(usage);
+  return computeStandardCallCost(usage);
 }
 
 // buildTranscriptAndSummary (agent/worker.ts) always runs post-call translation/
