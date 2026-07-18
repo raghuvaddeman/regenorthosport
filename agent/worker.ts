@@ -1,7 +1,9 @@
 import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { AudioFrame, AudioSource, FrameProcessor, LocalAudioTrack, Room, TrackPublishOptions, TrackSource } from '@livekit/rtc-node';
+import { ReadableStream } from 'node:stream/web';
+import { AudioFrame } from '@livekit/rtc-node';
 import {
   defineAgent,
   cli,
@@ -27,115 +29,81 @@ import { z } from 'zod';
 import type { CallUsage } from '../lib/pricing/call-cost';
 import type { CallLatencyMetrics, CallLatencyTurn } from '../lib/observability/call-latency';
 import { DEFAULT_VOICE_PIPELINE, isVoicePipeline, type VoicePipeline } from '../lib/voice-pipeline';
-import { GREETING_TEXT, OPENING_AUDIO_PATH } from './greeting';
-import { parseWavPcm16 } from './wav';
 
 const FALLBACK_INSTRUCTIONS =
   'You are a friendly, helpful voice assistant answering phone calls for a healthcare practice. ' +
   'Keep responses brief and conversational, ask clarifying questions when needed, and be polite at all times.';
 
+// Pre-recorded greeting (see agent/assets/priya-greeting.wav): played via session.say({ audio })
+// instead of live TTS generation, so the very first thing every caller hears is a fixed, glitch-free
+// clip rather than something a live pipeline has to render under real-time network/model conditions.
+// The tradeoff: this text must always match what's actually spoken in the WAV file exactly — unlike
+// the old generateReply()-based greeting, it does NOT read from the dashboard's configurable Welcome
+// Message field. Changing the wording means re-recording/re-generating the audio and replacing the
+// file, not just editing a setting.
+const GREETING_TEXT =
+  'Hello, and welcome to RegenOrthoSport! This is Priya, your digital assistant. How can I help you today?';
+const GREETING_AUDIO_PATH = join(dirname(fileURLToPath(import.meta.url)), 'assets', 'priya-greeting.wav');
+
 /**
- * Publishes the pre-recorded opening greeting (agent/assets/opening.wav, see
- * agent/generate-opening.ts) directly to the room via a raw AudioSource —
- * bypasses session.say()/TTS entirely, so it can start playing the instant
- * the room connects, in parallel with session/LLM setup, instead of waiting
- * for session.start() to resolve first like the old session.say()-based
- * greeting did.
- *
- * Resolves once playout has actually *finished* (audioSource.waitForPlayout()),
- * not just been queued — entry() awaits this before enabling caller audio
- * input, so STT/the LLM never hears anything until the opening is done.
+ * Minimal 16-bit PCM WAV parser — just enough to read the fixed greeting asset above, not a
+ * general-purpose decoder. Throws on anything else (compressed WAV, non-16-bit, missing chunks)
+ * rather than silently producing garbled audio.
  */
-async function playOpening(room: Room, jobStartedAt: number): Promise<void> {
-  // Only undefined if called before ctx.connect() has resolved — entry()
-  // never does that, but the type is optional so this is asserted explicitly
-  // rather than silently risking a confusing crash deep inside publishTrack().
-  const localParticipant = room.localParticipant;
-  if (!localParticipant) {
-    throw new Error('playOpening: room.localParticipant is not available (called before ctx.connect() resolved?).');
+function parseWavPcm16(buffer: Buffer): { data: Int16Array; sampleRate: number; channels: number } {
+  if (buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
+    throw new Error('Not a valid WAV file (missing RIFF/WAVE header).');
   }
+  let offset = 12;
+  let sampleRate = 0;
+  let channels = 0;
+  let bitsPerSample = 0;
+  let dataStart = -1;
+  let dataLength = 0;
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString('ascii', offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    if (chunkId === 'fmt ') {
+      channels = buffer.readUInt16LE(offset + 10);
+      sampleRate = buffer.readUInt32LE(offset + 12);
+      bitsPerSample = buffer.readUInt16LE(offset + 22);
+    } else if (chunkId === 'data') {
+      dataStart = offset + 8;
+      dataLength = chunkSize;
+    }
+    // Chunks are word-aligned: a chunk with odd size has one byte of padding after it.
+    offset += 8 + chunkSize + (chunkSize % 2);
+  }
+  if (dataStart === -1) throw new Error('WAV file has no data chunk.');
+  if (bitsPerSample !== 16) throw new Error(`Expected 16-bit PCM WAV, got ${bitsPerSample}-bit.`);
 
-  const { data, sampleRate, channels } = parseWavPcm16(readFileSync(OPENING_AUDIO_PATH));
-  const audioSource = new AudioSource(sampleRate, channels);
-  const track = LocalAudioTrack.createAudioTrack('opening', audioSource);
-  // SOURCE_MICROPHONE matches what @livekit/agents' own RoomIO uses for the
-  // agent's regular TTS output track (see node_modules/@livekit/agents/dist/
-  // voice/room_io/room_io.js) — same "this participant is talking" semantics,
-  // so SIP/telephony bridging treats it the same way.
-  const publication = await localParticipant.publishTrack(
-    track,
-    new TrackPublishOptions({ source: TrackSource.SOURCE_MICROPHONE })
-  );
+  const pcmBytes = buffer.subarray(dataStart, dataStart + dataLength);
+  // Copy into a fresh, aligned ArrayBuffer — Int16Array requires an even byte offset, which
+  // buffer.subarray()'s underlying offset isn't guaranteed to have.
+  const aligned = new Uint8Array(pcmBytes.length);
+  aligned.set(pcmBytes);
+  const data = new Int16Array(aligned.buffer);
+  return { data, sampleRate, channels };
+}
 
-  // 20ms frames, pushed as fast as JS can loop — captureFrame() only confirms
-  // the frame was queued natively, it does NOT block for real-time playback
-  // (frames "can be pushed faster than real-time" per AudioOutput's own
-  // doc comment). This is the exact same per-frame await loop
-  // @livekit/agents' own ParticipantAudioOutput.captureFrame() uses
-  // internally for live TTS output — not something invented for this.
+/** Builds a ReadableStream<AudioFrame> from the pre-recorded greeting WAV, chunked into 20ms frames. */
+function buildGreetingAudioStream(): ReadableStream<AudioFrame> {
+  const { data, sampleRate, channels } = parseWavPcm16(readFileSync(GREETING_AUDIO_PATH));
   const samplesPerChannelPerFrame = Math.floor((sampleRate * 20) / 1000);
   const frameLength = samplesPerChannelPerFrame * channels;
   let position = 0;
-  let firstFrameLogged = false;
-  while (position < data.length) {
-    const end = Math.min(position + frameLength, data.length);
-    const chunk = data.slice(position, end);
-    await audioSource.captureFrame(new AudioFrame(chunk, sampleRate, channels, Math.floor(chunk.length / channels)));
-    if (!firstFrameLogged) {
-      firstFrameLogged = true;
-      console.log(`[GREETING] first_frame_captured +${Date.now() - jobStartedAt}ms`);
-    }
-    position = end;
-  }
-
-  // Waits for the native buffer to actually drain in real time — NOT
-  // resolved by the capture loop above finishing, which happens almost
-  // instantly since captureFrame() doesn't block for playback.
-  await audioSource.waitForPlayout();
-  console.log(`[GREETING] playout_finished +${Date.now() - jobStartedAt}ms`);
-
-  // Tidy up — leave no permanently-silent track lingering in the room.
-  if (publication.sid) {
-    await localParticipant.unpublishTrack(publication.sid).catch((err: any) => {
-      console.warn('[GREETING] Failed to unpublish opening track:', err.message);
-    });
-  }
-  await audioSource.close();
-}
-
-/**
- * Silences caller audio (replaces every frame with digital silence) until
- * `open()` is called — passed as RoomInputOptions.noiseCancellation, which
- * `voice.AgentSession` applies per-frame to the caller's track before it
- * reaches STT/the LLM, regardless of which pipeline is active.
- *
- * NOT built on session.input.setAudioEnabled(): confirmed against
- * node_modules/@livekit/agents/dist/voice/room_io/_input.js that
- * ParticipantAudioInputStream (the room-based audio input every pipeline
- * here uses) never overrides the AudioInput base class's onAttached/
- * onDetached — so setAudioEnabled() is a documented no-op for this input
- * type, not a real gate. This FrameProcessor is the same "swap in a silence
- * frame" technique @livekit/agents' own AEC-warmup/uninterruptible-speech
- * handling uses internally (see AgentActivity.shouldDiscardInputAudio), just
- * driven by our own open()/closed flag instead of theirs.
- */
-class OpeningGateProcessor extends FrameProcessor<AudioFrame> {
-  private muted = true;
-
-  open(): void {
-    this.muted = false;
-  }
-  isEnabled(): boolean {
-    return true;
-  }
-  setEnabled(): void {
-    // Unused — muting is driven by open()/`this.muted`, not this SDK hook.
-  }
-  process(frame: AudioFrame): AudioFrame {
-    if (!this.muted) return frame;
-    return new AudioFrame(new Int16Array(frame.data.length), frame.sampleRate, frame.channels, frame.samplesPerChannel);
-  }
-  close(): void {}
+  return new ReadableStream<AudioFrame>({
+    pull(controller) {
+      if (position >= data.length) {
+        controller.close();
+        return;
+      }
+      const end = Math.min(position + frameLength, data.length);
+      const chunk = data.slice(position, end);
+      controller.enqueue(new AudioFrame(chunk, sampleRate, channels, Math.floor(chunk.length / channels)));
+      position = end;
+    },
+  });
 }
 
 /** Fetches the persisted agent persona (system prompt + welcome message) from the dashboard. */
@@ -734,8 +702,6 @@ function attachLatencyLogging(
     callStartedAt: number;
     callInfo: { customerPhone: string; egressId: string };
     egressClient: EgressClient | null;
-    // Date.now() at job entrypoint — every [TIMING] marker is a delta from this.
-    jobStartedAt: number;
   }
 ) {
   // The active LLM only honors one of thinkingBudget/thinkingLevel depending on
@@ -765,13 +731,6 @@ function attachLatencyLogging(
   let realtimeInputAudioTokens = 0;
   let realtimeOutputTextTokens = 0;
   let realtimeOutputAudioTokens = 0;
-
-  // [TIMING] marker (4): only the *first* tts_metrics event of the call —
-  // i.e. the live conversational reply after the pre-recorded opening
-  // finishes, not the opening itself (which bypasses TTS entirely).
-  // Doesn't fire at all for gemini_native/grok_voice: those fuse STT/LLM/TTS
-  // into one realtime model with no distinct TTS stage to time.
-  let firstTtsByteLogged = false;
 
   const maybeLogTotal = (speechId: string) => {
     const t = turns.get(speechId);
@@ -830,10 +789,6 @@ function attachLatencyLogging(
       case 'tts_metrics': {
         const speechId = m.speechId ?? 'unknown';
         console.log(`[LATENCY] speech_id=${speechId} stage=tts ttfb=${Math.round(m.ttfbMs)}ms`);
-        if (!firstTtsByteLogged) {
-          firstTtsByteLogged = true;
-          console.log(`[TIMING] first_tts_byte_received +${Date.now() - activeConfig.jobStartedAt}ms`);
-        }
         if (m.speechId) {
           const t = turns.get(m.speechId) ?? {};
           if (t.ttsTtfbMs === undefined) t.ttsTtfbMs = m.ttfbMs;
@@ -989,14 +944,7 @@ export default defineAgent({
   },
 
   entry: async (ctx: JobContext) => {
-    // [TIMING] marker (1): job entrypoint hit. Every other [TIMING] line is a
-    // delta from this instant.
-    const jobStartedAt = Date.now();
-    console.log('[TIMING] job_entrypoint_hit +0ms');
-
     await ctx.connect();
-    // [TIMING] marker (2): room connected.
-    console.log(`[TIMING] room_connected +${Date.now() - jobStartedAt}ms`);
 
     const callStartedAt = Date.now();
     const callUuid = ctx.job.id || crypto.randomUUID();
@@ -1005,13 +953,6 @@ export default defineAgent({
 
     const bulkCallInfo = parseBulkCallRoomName(ctx.room.name ?? '');
     const callDirection: 'inbound' | 'outbound' = isOutboundRoom(ctx.room.name ?? '') ? 'outbound' : 'inbound';
-
-    // Kicked off immediately, NOT awaited here — plays the pre-recorded
-    // opening concurrently with settings/session setup below instead of
-    // sequentially after it, so the caller hears something the instant the
-    // room connects regardless of how long Gemini Live (or whichever
-    // pipeline) takes to initialize. Joined further down, after session.start().
-    const openingPlayback = playOpening(ctx.room, jobStartedAt);
 
     const [settings, models, campaignResolvedPrompt] = await Promise.all([
       fetchAgentSettings(),
@@ -1151,7 +1092,6 @@ export default defineAgent({
       callStartedAt,
       callInfo,
       egressClient,
-      jobStartedAt,
     });
 
     // Resolution order for bulk calls: the campaign's own locked-in script
@@ -1167,31 +1107,7 @@ export default defineAgent({
       tools: bulkCallInfo ? [buildRsvpTool(bulkCallInfo.contactId)] : undefined,
     });
 
-    // openingGate silences caller audio (see OpeningGateProcessor) until
-    // opened below, once the pre-recorded opening has actually finished
-    // playing (openingPlayback) — not merely once the session itself is
-    // ready. RoomInputOptions.audioEnabled is deliberately left at its
-    // default `true` here: setting it false would skip creating the audio
-    // input stream entirely, leaving nothing for the gate to run on.
-    const openingGate = new OpeningGateProcessor();
-    await session.start({ agent, room: ctx.room, inputOptions: { noiseCancellation: openingGate } });
-    // [TIMING] marker (3): session ready (the active pipeline's LLM/STT/TTS —
-    // or, for gemini_native/grok_voice, the realtime "Live" connection — is
-    // up and the session can converse).
-    console.log(`[TIMING] session_ready pipeline=${voicePipeline} +${Date.now() - jobStartedAt}ms`);
-
-    // [TIMING] marker (5): first audio frame published to the room — fires on
-    // the live pipeline's first real spoken reply (after the opening), via
-    // the SDK's own "first frame sent to output" event. `once` because only
-    // the first occurrence matters here, unlike the [LATENCY] per-turn stats
-    // attachLatencyLogging tracks for every turn.
-    if (session.output.audio) {
-      session.output.audio.once(voice.AudioOutput.EVENT_PLAYBACK_STARTED, () => {
-        console.log(`[TIMING] first_audio_frame_published +${Date.now() - jobStartedAt}ms`);
-      });
-    } else {
-      console.warn('[TIMING] session.output.audio is null after session.start() — cannot mark first_audio_frame_published.');
-    }
+    await session.start({ agent, room: ctx.room });
 
     // Captured once here (participant is definitely connected by now) rather than
     // re-read at session Close, where the disconnecting participant may already be
@@ -1222,20 +1138,10 @@ export default defineAgent({
       console.warn('[RECORDING] Skipping egress: egressClient is null.');
     }
 
-    // Join the opening playback kicked off at the very top of entry() — by
-    // now it's usually already finished (it started well before session.start()
-    // resolved), but this still correctly waits out the rare case where
-    // session/LLM setup was unusually fast and the greeting is still playing.
-    await openingPlayback;
-
-    // Only now does caller audio actually reach STT/the LLM.
-    openingGate.open();
-
-    // The opening bypassed session.say(), so it was never added to chat
-    // history the way a normal agent turn would be — added manually here so
-    // the transcript/summary (buildTranscriptAndSummary) still shows it as
-    // the first line of the conversation.
-    session.history.addMessage({ role: 'assistant', content: GREETING_TEXT });
+    // Pre-recorded, not generated live (see GREETING_TEXT comment) — bypasses TTS/LLM entirely
+    // via session.say()'s `audio` option, so the greeting is identical and glitch-free on every
+    // call regardless of which pipeline is active.
+    session.say(GREETING_TEXT, { audio: buildGreetingAudioStream() });
   },
 });
 

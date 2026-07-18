@@ -9,8 +9,7 @@
     "lint": "eslint",
     "agent:download-files": "tsx agent/worker.ts download-files",
     "agent:dev": "tsx agent/worker.ts dev",
-    "agent:start": "tsx agent/worker.ts start",
-    "agent:generate-opening": "tsx agent/generate-opening.ts"
+    "agent:start": "tsx agent/worker.ts start"
   },
   "dependencies": {
     "@clerk/backend": "^3.10.0",
