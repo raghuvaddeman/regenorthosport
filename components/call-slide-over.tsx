@@ -2,10 +2,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Play, Pause, X, Sparkles, Star, ChevronDown, Gauge } from "lucide-react";
+import { Download, Loader2, Play, Pause, X, Sparkles, Star, ChevronDown, Gauge } from "lucide-react";
 import type { Call } from "@/lib/use-calls";
 import type { CallLatencyMetrics } from "@/lib/observability/call-latency";
 import type { SentimentLabel } from "@/lib/call-classification";
+import { buildRecordingFilename, downloadRecording } from "@/lib/download-recording";
 
 /* ------------------------------- Utilities ------------------------------ */
 
@@ -131,12 +132,25 @@ export function CallSlideOver({ call, onClose }: { call: Call; onClose: () => vo
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [perfExpanded, setPerfExpanded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const toggle = () => {
     const a = audioRef.current;
     if (!a) return;
     playing ? a.pause() : a.play();
     setPlaying(!playing);
+  };
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      await downloadRecording(call.recordingUrl, buildRecordingFilename(call));
+    } catch (err) {
+      console.error("Failed to download recording:", err);
+      alert("Couldn't download the recording. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const turns = (call.transcript || "").split("\n").map((line, i) => {
@@ -293,12 +307,21 @@ export function CallSlideOver({ call, onClose }: { call: Call; onClose: () => vo
               <Play className="h-4 w-4 pl-0.5" />
             )}
           </button>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-sm font-medium">Call recording</div>
             <div className="font-mono text-xs text-zinc-400">
               {mmss(call.durationSec)}
             </div>
           </div>
+          <button
+            onClick={handleDownload}
+            disabled={!call.recordingUrl || downloading}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-600 hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-500"
+            aria-label="Download recording"
+            title="Download recording"
+          >
+            {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          </button>
           <audio
             ref={audioRef}
             src={call.recordingUrl}

@@ -1,7 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useState, useRef, useEffect } from "react";
-import { Play, Pause, X, Volume2 } from "lucide-react";
+import { Download, Loader2, Play, Pause, X, Volume2 } from "lucide-react";
+import { buildRecordingFilename, downloadRecording } from "@/lib/download-recording";
 
 type Call = {
   uuid: string;
@@ -23,6 +24,7 @@ const AudioContext = createContext<AudioContextType | undefined>(undefined);
 export function AudioPlayerProvider({ children }: { children: React.ReactNode }) {
   const [currentCall, setCurrentCall] = useState<Call | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -62,6 +64,18 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     setIsPlaying(false);
   };
 
+  const handleDownload = async (call: Call) => {
+    setDownloading(true);
+    try {
+      await downloadRecording(call.recordingUrl, buildRecordingFilename(call));
+    } catch (err) {
+      console.error("Failed to download recording:", err);
+      alert("Couldn't download the recording. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <AudioContext.Provider value={{ currentCall, isPlaying, play, pause, stop }}>
       {children}
@@ -77,6 +91,15 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
             className="grid h-8 w-8 place-items-center rounded-full bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-600 dark:hover:bg-zinc-500 transition-colors"
           >
             {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3 fill-current" />}
+          </button>
+          <button
+            onClick={() => handleDownload(currentCall)}
+            disabled={downloading}
+            aria-label="Download recording"
+            title="Download recording"
+            className="grid h-8 w-8 place-items-center rounded-full bg-zinc-100 hover:bg-zinc-200 disabled:opacity-50 dark:bg-zinc-600 dark:hover:bg-zinc-500 transition-colors"
+          >
+            {downloading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
           </button>
           <button onClick={stop} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
             <X className="h-4 w-4" />

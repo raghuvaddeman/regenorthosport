@@ -14,7 +14,9 @@ import {
   Activity,
   ArrowRight,
   Copy,
+  Download,
   ExternalLink,
+  Loader2,
   MessageSquareText,
   MoreVertical,
   Play,
@@ -27,6 +29,7 @@ import {
   PhoneIncoming,
   Clock,
 } from "lucide-react";
+import { buildRecordingFilename, downloadRecording } from "@/lib/download-recording";
 
 /* ----------------------------- Small pieces ----------------------------- */
 
@@ -110,6 +113,7 @@ function ChartCard({
 
 function CallRowMenu({ call }: { call: Call }) {
   const [open, setOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -119,6 +123,19 @@ function CallRowMenu({ call }: { call: Call }) {
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
+
+  const handleDownload = async () => {
+    setOpen(false);
+    setDownloading(true);
+    try {
+      await downloadRecording(call.recordingUrl, buildRecordingFilename(call));
+    } catch (err) {
+      console.error("Failed to download recording:", err);
+      alert("Couldn't download the recording. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div ref={ref} className="relative">
@@ -152,6 +169,15 @@ function CallRowMenu({ call }: { call: Call }) {
             className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-zinc-700"
           >
             <ExternalLink className="h-3.5 w-3.5" /> Open recording
+          </button>
+          <button
+            type="button"
+            disabled={!call.recordingUrl || downloading}
+            onClick={handleDownload}
+            className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-zinc-700"
+          >
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            Download recording
           </button>
         </div>
       )}
