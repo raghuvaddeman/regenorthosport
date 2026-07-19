@@ -8,8 +8,6 @@ import {
   Wrench,
   PhoneIncoming,
   Save,
-  Sparkles,
-  Info,
   Voicemail,
   UserCheck,
   MessageSquareText,
@@ -21,7 +19,6 @@ import {
   MessageCircle,
   Globe,
   Clock,
-  PhoneOutgoing,
   Circle,
   Copy,
   Check,
@@ -34,6 +31,7 @@ import {
   isVoicePipeline,
   type VoicePipeline,
 } from "@/lib/voice-pipeline";
+import { SectionCard, Field, TextArea, Slider, Toggle } from "@/components/agent-settings-ui";
 
 /* --------------------------------- Tabs --------------------------------- */
 
@@ -43,186 +41,9 @@ const TABS = [
   { id: "call", label: "Call", icon: PhoneCall },
   { id: "tools", label: "Tools", icon: Wrench },
   { id: "inbound", label: "Inbound", icon: PhoneIncoming },
-  { id: "script", label: "Script", icon: MessageSquareText },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
-
-const SCRIPT_TABS = [
-  { id: "inbound", label: "Inbound Script", icon: MessageSquareText },
-  { id: "outbound", label: "Outbound Script", icon: PhoneOutgoing },
-] as const;
-
-type ScriptTabId = (typeof SCRIPT_TABS)[number]["id"];
-
-/* ------------------------------ UI building blocks ------------------------------ */
-
-const inputClasses =
-  "w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-500 dark:bg-zinc-800 dark:text-zinc-100";
-
-function SectionCard({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-600 dark:bg-zinc-700">
-      <div className="border-b border-zinc-200 px-5 py-4 dark:border-zinc-600">
-        <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
-        {description && (
-          <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{description}</p>
-        )}
-      </div>
-      <div className="space-y-5 px-5 py-5">{children}</div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  tooltip,
-  valueLabel,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  tooltip?: string;
-  valueLabel?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="grid gap-2 sm:grid-cols-3 sm:gap-4">
-      <div className="sm:col-span-1">
-        <div className="flex items-center gap-1.5">
-          <label className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{label}</label>
-          {tooltip && (
-            <span title={tooltip} className="inline-flex cursor-help">
-              <Info className="h-3.5 w-3.5 shrink-0 text-zinc-400 dark:text-zinc-500" />
-            </span>
-          )}
-          {valueLabel && (
-            <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400">{valueLabel}</span>
-          )}
-        </div>
-        {hint && <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{hint}</p>}
-      </div>
-      <div className="sm:col-span-2">{children}</div>
-    </div>
-  );
-}
-
-function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={inputClasses} />;
-}
-
-function SelectInput(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={inputClasses} />;
-}
-
-function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return (
-    <textarea
-      {...props}
-      className="w-full resize-y rounded-md border border-zinc-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-zinc-900 outline-none transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-500 dark:bg-zinc-800 dark:text-zinc-100"
-    />
-  );
-}
-
-
-function Slider({
-  value,
-  onChange,
-  min,
-  max,
-  step = 1,
-  suffix = "",
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  min: number;
-  max: number;
-  step?: number;
-  suffix?: string;
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1.5 w-full flex-1 cursor-pointer appearance-none rounded-full bg-zinc-200 accent-indigo-600 dark:bg-zinc-500"
-      />
-      <span className="w-16 shrink-0 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-center font-mono text-xs tabular-nums text-zinc-700 dark:border-zinc-500 dark:bg-zinc-800 dark:text-zinc-300">
-        {value}
-        {suffix}
-      </span>
-    </div>
-  );
-}
-
-function Toggle({
-  checked,
-  onChange,
-  label,
-  description,
-  tooltip,
-  icon: Icon,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-  description?: string;
-  tooltip?: string;
-  icon?: React.ElementType;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-600">
-      <div className="flex items-start gap-3">
-        {Icon && (
-          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-zinc-100 text-zinc-500 dark:bg-zinc-600 dark:text-zinc-400">
-            <Icon className="h-4 w-4" />
-          </span>
-        )}
-        <div>
-          <div className="flex items-center gap-1.5">
-            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{label}</p>
-            {tooltip && (
-              <span title={tooltip} className="inline-flex cursor-help">
-                <Info className="h-3.5 w-3.5 shrink-0 text-zinc-400 dark:text-zinc-500" />
-              </span>
-            )}
-          </div>
-          {description && (
-            <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{description}</p>
-          )}
-        </div>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-          checked ? "bg-indigo-600" : "bg-zinc-300 dark:bg-zinc-500"
-        }`}
-      >
-        <span
-          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-            checked ? "translate-x-[18px]" : "translate-x-1"
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
 
 // Live testing (Get/Test call, Agent Status, etc.) moved to its own
 // "Agent Actions" page/sidebar entry — see app/(portal)/dashboard/agent-actions.
@@ -240,7 +61,6 @@ const DEFAULT_SYSTEM_PROMPT = `You are Priya, the AI front-desk receptionist for
 
 export default function AgentSettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>("voicePipeline");
-  const [scriptSubTab, setScriptSubTab] = useState<ScriptTabId>("inbound");
 
   // Agent tab — persisted via /api/agent-settings, used live by the call worker.
   const [welcomeMessage, setWelcomeMessage] = useState(
@@ -419,83 +239,6 @@ export default function AgentSettingsPage() {
               })}
             </div>
           </SectionCard>
-        </div>
-      )}
-
-      {/* Script */}
-      {activeTab === "script" && (
-        <div className="space-y-6">
-          <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-600">
-            {SCRIPT_TABS.map(({ id, label, icon: Icon }) => {
-              const active = scriptSubTab === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => setScriptSubTab(id)}
-                  className={`inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-                    active
-                      ? "border-indigo-600 text-zinc-900 dark:text-zinc-50"
-                      : "border-transparent text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-
-          {scriptSubTab === "inbound" && (
-            <div className="space-y-6">
-              <SectionCard title="Identity" description="How the agent introduces itself to callers.">
-                <Field label="Agent name" hint="Displayed internally in call logs and transcripts.">
-                  <TextInput value={agentName} onChange={(e) => setAgentName(e.target.value)} />
-                </Field>
-                <Field label="Welcome message" hint="Spoken at the start of every inbound call.">
-                  <TextInput
-                    value={welcomeMessage}
-                    onChange={(e) => setWelcomeMessage(e.target.value)}
-                  />
-                </Field>
-              </SectionCard>
-
-              <SectionCard
-                title="Inbound System Prompt"
-                description="The instructions that steer the agent's behavior and tone on inbound calls."
-              >
-                <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">
-                  <Sparkles className="h-3.5 w-3.5" /> Prompt canvas
-                </div>
-                <TextArea
-                  rows={12}
-                  value={systemPrompt}
-                  onChange={(e) => setSystemPrompt(e.target.value)}
-                />
-              </SectionCard>
-            </div>
-          )}
-
-          {scriptSubTab === "outbound" && (
-            <div className="space-y-6">
-              <SectionCard
-                title="Outbound / Bulk Call System Prompt"
-                description={
-                  'Used as the reusable template for weekly webinar RSVP calls. Supports placeholders: ' +
-                  '{{doctor_name}}, {{condition}}, {{webinar_date}}, {{webinar_time}}. Falls back to the inbound prompt if left empty.'
-                }
-              >
-                <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">
-                  <Sparkles className="h-3.5 w-3.5" /> Prompt canvas
-                </div>
-                <TextArea
-                  rows={12}
-                  value={outboundSystemPrompt}
-                  onChange={(e) => setOutboundSystemPrompt(e.target.value)}
-                  placeholder="Leave empty to reuse the inbound prompt above for bulk call campaigns."
-                />
-              </SectionCard>
-            </div>
-          )}
         </div>
       )}
 

@@ -7,7 +7,7 @@ import { useUser, useClerk } from "@clerk/nextjs";
 import {
   LayoutDashboard, PhoneCall, Users, Settings, Database,
   PhoneForwarded, FileText, BrainCircuit, ShieldAlert, Radio, Phone, CreditCard, Plug, Menu, X,
-  UserCog, PhoneOutgoing, MessagesSquare, Gauge, Zap, UserPlus
+  UserCog, PhoneOutgoing, MessagesSquare, Gauge, Zap, UserPlus, MessageSquareText
 } from "lucide-react";
 import { TeamModal } from "@/components/team-modal";
 import { canAccessPath, canManageTeam, roleOf } from "@/lib/roles";
@@ -43,6 +43,7 @@ const navigationData: { groupName: string; items: NavItem[] }[] = [
     groupName: "AI Voice Agent Config",
     items: [
       { label: "Agent Settings", href: "/dashboard/agent-settings", icon: Settings },
+      { label: "Agent Script", href: "/dashboard/agent-script", icon: MessageSquareText },
       { label: "Agent Actions", href: "/dashboard/agent-actions", icon: Zap },
       { label: "Knowledge Base", href: "/dashboard/knowledge-base", icon: Database },
       { label: "Voicemail & Routing", href: "/dashboard/routing", icon: PhoneForwarded },

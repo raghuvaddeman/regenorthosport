@@ -38,6 +38,7 @@ const ALL_DASHBOARD_PATHS = [
   "/dashboard/campaigns/bulk-call",
   "/dashboard/campaigns/broadcast",
   "/dashboard/agent-settings",
+  "/dashboard/agent-script",
   "/dashboard/agent-actions",
   "/dashboard/knowledge-base",
   "/dashboard/routing",
