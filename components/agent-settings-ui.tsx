@@ -1,4 +1,4 @@
-import { Info } from "lucide-react";
+import { Info, Save } from "lucide-react";
 
 export const inputClasses =
   "w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-500 dark:bg-zinc-800 dark:text-zinc-100";
@@ -107,6 +107,39 @@ export function Slider({
         {suffix}
       </span>
     </div>
+  );
+}
+
+// Grey + disabled with nothing to save, blue the moment something changes,
+// green right after a successful save — so the button's color always
+// reflects whether there's unsaved work, instead of staying blue regardless.
+export function SaveButton({
+  isDirty,
+  saving,
+  saved,
+  onClick,
+}: {
+  isDirty: boolean;
+  saving: boolean;
+  saved: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={saving || !isDirty}
+      className={`inline-flex items-center gap-2 self-start rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed sm:self-auto ${
+        saved
+          ? "bg-emerald-600"
+          : isDirty
+            ? "bg-indigo-600 hover:bg-indigo-500"
+            : "bg-zinc-300 dark:bg-zinc-600"
+      }`}
+    >
+      <Save className="h-4 w-4" />
+      {saving ? "Saving..." : saved ? "Saved" : "Save changes"}
+    </button>
   );
 }
 

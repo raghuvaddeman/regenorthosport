@@ -7,7 +7,6 @@ import {
   PhoneCall,
   Wrench,
   PhoneIncoming,
-  Save,
   Voicemail,
   UserCheck,
   MessageSquareText,
@@ -31,7 +30,8 @@ import {
   isVoicePipeline,
   type VoicePipeline,
 } from "@/lib/voice-pipeline";
-import { SectionCard, Field, TextArea, Slider, Toggle } from "@/components/agent-settings-ui";
+import { SectionCard, Field, TextArea, Slider, Toggle, SaveButton } from "@/components/agent-settings-ui";
+import { useUnsavedChangesGuard } from "@/lib/hooks/use-unsaved-changes-guard";
 
 /* --------------------------------- Tabs --------------------------------- */
 
@@ -71,6 +71,20 @@ export default function AgentSettingsPage() {
   const [agentName, setAgentName] = useState("Priya");
   const [voicePipeline, setVoicePipeline] = useState<VoicePipeline>(DEFAULT_VOICE_PIPELINE);
   const [loadingAgentSettings, setLoadingAgentSettings] = useState(true);
+  // Snapshot of the last-loaded/last-saved persisted fields, used to detect
+  // unsaved edits (only voicePipeline is actually editable on this page —
+  // the rest are carried through unedited so saving here can't clobber them).
+  // Starts from the same built-in defaults the fields above do, so dirty-checking
+  // still works even if the fetch below never succeeds (e.g. Supabase unreachable).
+  const [savedSnapshot, setSavedSnapshot] = useState(() =>
+    JSON.stringify({
+      agentName: "Priya",
+      welcomeMessage: "Hello. This is Priya from RegenOrthoSport",
+      systemPrompt: DEFAULT_SYSTEM_PROMPT,
+      outboundSystemPrompt: "",
+      voicePipeline: DEFAULT_VOICE_PIPELINE,
+    })
+  );
 
   useEffect(() => {
     async function fetchAgentSettings() {
@@ -78,11 +92,21 @@ export default function AgentSettingsPage() {
         const res = await fetch("/api/agent-settings");
         const json = await res.json();
         if (json.success) {
+          const pipeline = isVoicePipeline(json.data.voicePipeline) ? json.data.voicePipeline : DEFAULT_VOICE_PIPELINE;
           setAgentName(json.data.agentName);
           setWelcomeMessage(json.data.welcomeMessage);
           setSystemPrompt(json.data.systemPrompt);
           setOutboundSystemPrompt(json.data.outboundSystemPrompt ?? "");
-          setVoicePipeline(isVoicePipeline(json.data.voicePipeline) ? json.data.voicePipeline : DEFAULT_VOICE_PIPELINE);
+          setVoicePipeline(pipeline);
+          setSavedSnapshot(
+            JSON.stringify({
+              agentName: json.data.agentName,
+              welcomeMessage: json.data.welcomeMessage,
+              systemPrompt: json.data.systemPrompt,
+              outboundSystemPrompt: json.data.outboundSystemPrompt ?? "",
+              voicePipeline: pipeline,
+            })
+          );
         }
       } catch {
         // leave the built-in defaults in place
@@ -122,6 +146,11 @@ export default function AgentSettingsPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+  const currentSnapshot = JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, voicePipeline });
+  const isDirty = savedSnapshot !== currentSnapshot;
+  useUnsavedChangesGuard(isDirty);
+
   async function handleSave() {
     setSaving(true);
     setSaveError(null);
@@ -133,6 +162,7 @@ export default function AgentSettingsPage() {
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to save.");
+      setSavedSnapshot(currentSnapshot);
       setSaved(true);
       setLastSavedAt(new Date());
       setTimeout(() => setSaved(false), 2000);
@@ -171,14 +201,7 @@ export default function AgentSettingsPage() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 self-start rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-60 sm:self-auto"
-          >
-            <Save className="h-4 w-4" />
-            {saving ? "Saving..." : saved ? "Saved" : "Save changes"}
-          </button>
+          <SaveButton isDirty={isDirty} saving={saving} saved={saved} onClick={handleSave} />
           {saveError && <p className="text-xs text-red-500">{saveError}</p>}
         </div>
       </div>
