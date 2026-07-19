@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Bot,
   Cpu,
   PhoneCall,
   Wrench,
@@ -39,11 +38,13 @@ import {
 /* --------------------------------- Tabs --------------------------------- */
 
 const TABS = [
-  { id: "agent", label: "Agent", icon: Bot },
+  { id: "voicePipeline", label: "Voice Pipeline", icon: Waypoints },
   { id: "engine", label: "Engine", icon: Cpu },
   { id: "call", label: "Call", icon: PhoneCall },
   { id: "tools", label: "Tools", icon: Wrench },
   { id: "inbound", label: "Inbound", icon: PhoneIncoming },
+  { id: "inboundScript", label: "Inbound Script", icon: MessageSquareText },
+  { id: "outboundScript", label: "Outbound Script", icon: PhoneOutgoing },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -232,7 +233,7 @@ const DEFAULT_SYSTEM_PROMPT = `You are Priya, the AI front-desk receptionist for
 - Keep responses concise and speak in a calm, professional tone.`;
 
 export default function AgentSettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabId>("agent");
+  const [activeTab, setActiveTab] = useState<TabId>("voicePipeline");
 
   // Agent tab — persisted via /api/agent-settings, used live by the call worker.
   const [welcomeMessage, setWelcomeMessage] = useState(
@@ -376,21 +377,9 @@ export default function AgentSettingsPage() {
         })}
       </div>
 
-      {/* Agent */}
-      {activeTab === "agent" && (
+      {/* Voice Pipeline */}
+      {activeTab === "voicePipeline" && (
         <div className="space-y-6">
-          <SectionCard title="Identity" description="How the agent introduces itself to callers.">
-            <Field label="Agent name" hint="Displayed internally in call logs and transcripts.">
-              <TextInput value={agentName} onChange={(e) => setAgentName(e.target.value)} />
-            </Field>
-            <Field label="Welcome message" hint="Spoken at the start of every inbound call.">
-              <TextInput
-                value={welcomeMessage}
-                onChange={(e) => setWelcomeMessage(e.target.value)}
-              />
-            </Field>
-          </SectionCard>
-
           <SectionCard
             title="Voice Pipeline"
             description="Which speech-to-text/LLM/text-to-speech stack handles calls. Switch to compare quality, latency, and cost for your business — test with a real call before relying on a new option."
@@ -423,6 +412,23 @@ export default function AgentSettingsPage() {
               })}
             </div>
           </SectionCard>
+        </div>
+      )}
+
+      {/* Inbound Script */}
+      {activeTab === "inboundScript" && (
+        <div className="space-y-6">
+          <SectionCard title="Identity" description="How the agent introduces itself to callers.">
+            <Field label="Agent name" hint="Displayed internally in call logs and transcripts.">
+              <TextInput value={agentName} onChange={(e) => setAgentName(e.target.value)} />
+            </Field>
+            <Field label="Welcome message" hint="Spoken at the start of every inbound call.">
+              <TextInput
+                value={welcomeMessage}
+                onChange={(e) => setWelcomeMessage(e.target.value)}
+              />
+            </Field>
+          </SectionCard>
 
           <SectionCard
             title="Inbound System Prompt"
@@ -437,7 +443,12 @@ export default function AgentSettingsPage() {
               onChange={(e) => setSystemPrompt(e.target.value)}
             />
           </SectionCard>
+        </div>
+      )}
 
+      {/* Outbound Script */}
+      {activeTab === "outboundScript" && (
+        <div className="space-y-6">
           <SectionCard
             title="Outbound / Bulk Call System Prompt"
             description={
