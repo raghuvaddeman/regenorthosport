@@ -43,11 +43,17 @@ const TABS = [
   { id: "call", label: "Call", icon: PhoneCall },
   { id: "tools", label: "Tools", icon: Wrench },
   { id: "inbound", label: "Inbound", icon: PhoneIncoming },
-  { id: "inboundScript", label: "Inbound Script", icon: MessageSquareText },
-  { id: "outboundScript", label: "Outbound Script", icon: PhoneOutgoing },
+  { id: "script", label: "Script", icon: MessageSquareText },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+const SCRIPT_TABS = [
+  { id: "inbound", label: "Inbound Script", icon: MessageSquareText },
+  { id: "outbound", label: "Outbound Script", icon: PhoneOutgoing },
+] as const;
+
+type ScriptTabId = (typeof SCRIPT_TABS)[number]["id"];
 
 /* ------------------------------ UI building blocks ------------------------------ */
 
@@ -234,6 +240,7 @@ const DEFAULT_SYSTEM_PROMPT = `You are Priya, the AI front-desk receptionist for
 
 export default function AgentSettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>("voicePipeline");
+  const [scriptSubTab, setScriptSubTab] = useState<ScriptTabId>("inbound");
 
   // Agent tab — persisted via /api/agent-settings, used live by the call worker.
   const [welcomeMessage, setWelcomeMessage] = useState(
@@ -415,57 +422,80 @@ export default function AgentSettingsPage() {
         </div>
       )}
 
-      {/* Inbound Script */}
-      {activeTab === "inboundScript" && (
+      {/* Script */}
+      {activeTab === "script" && (
         <div className="space-y-6">
-          <SectionCard title="Identity" description="How the agent introduces itself to callers.">
-            <Field label="Agent name" hint="Displayed internally in call logs and transcripts.">
-              <TextInput value={agentName} onChange={(e) => setAgentName(e.target.value)} />
-            </Field>
-            <Field label="Welcome message" hint="Spoken at the start of every inbound call.">
-              <TextInput
-                value={welcomeMessage}
-                onChange={(e) => setWelcomeMessage(e.target.value)}
-              />
-            </Field>
-          </SectionCard>
+          <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-600">
+            {SCRIPT_TABS.map(({ id, label, icon: Icon }) => {
+              const active = scriptSubTab === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setScriptSubTab(id)}
+                  className={`inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+                    active
+                      ? "border-indigo-600 text-zinc-900 dark:text-zinc-50"
+                      : "border-transparent text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
 
-          <SectionCard
-            title="Inbound System Prompt"
-            description="The instructions that steer the agent's behavior and tone on inbound calls."
-          >
-            <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">
-              <Sparkles className="h-3.5 w-3.5" /> Prompt canvas
-            </div>
-            <TextArea
-              rows={12}
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-            />
-          </SectionCard>
-        </div>
-      )}
+          {scriptSubTab === "inbound" && (
+            <div className="space-y-6">
+              <SectionCard title="Identity" description="How the agent introduces itself to callers.">
+                <Field label="Agent name" hint="Displayed internally in call logs and transcripts.">
+                  <TextInput value={agentName} onChange={(e) => setAgentName(e.target.value)} />
+                </Field>
+                <Field label="Welcome message" hint="Spoken at the start of every inbound call.">
+                  <TextInput
+                    value={welcomeMessage}
+                    onChange={(e) => setWelcomeMessage(e.target.value)}
+                  />
+                </Field>
+              </SectionCard>
 
-      {/* Outbound Script */}
-      {activeTab === "outboundScript" && (
-        <div className="space-y-6">
-          <SectionCard
-            title="Outbound / Bulk Call System Prompt"
-            description={
-              'Used as the reusable template for weekly webinar RSVP calls. Supports placeholders: ' +
-              '{{doctor_name}}, {{condition}}, {{webinar_date}}, {{webinar_time}}. Falls back to the inbound prompt if left empty.'
-            }
-          >
-            <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">
-              <Sparkles className="h-3.5 w-3.5" /> Prompt canvas
+              <SectionCard
+                title="Inbound System Prompt"
+                description="The instructions that steer the agent's behavior and tone on inbound calls."
+              >
+                <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">
+                  <Sparkles className="h-3.5 w-3.5" /> Prompt canvas
+                </div>
+                <TextArea
+                  rows={12}
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                />
+              </SectionCard>
             </div>
-            <TextArea
-              rows={12}
-              value={outboundSystemPrompt}
-              onChange={(e) => setOutboundSystemPrompt(e.target.value)}
-              placeholder="Leave empty to reuse the inbound prompt above for bulk call campaigns."
-            />
-          </SectionCard>
+          )}
+
+          {scriptSubTab === "outbound" && (
+            <div className="space-y-6">
+              <SectionCard
+                title="Outbound / Bulk Call System Prompt"
+                description={
+                  'Used as the reusable template for weekly webinar RSVP calls. Supports placeholders: ' +
+                  '{{doctor_name}}, {{condition}}, {{webinar_date}}, {{webinar_time}}. Falls back to the inbound prompt if left empty.'
+                }
+              >
+                <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">
+                  <Sparkles className="h-3.5 w-3.5" /> Prompt canvas
+                </div>
+                <TextArea
+                  rows={12}
+                  value={outboundSystemPrompt}
+                  onChange={(e) => setOutboundSystemPrompt(e.target.value)}
+                  placeholder="Leave empty to reuse the inbound prompt above for bulk call campaigns."
+                />
+              </SectionCard>
+            </div>
+          )}
         </div>
       )}
 
