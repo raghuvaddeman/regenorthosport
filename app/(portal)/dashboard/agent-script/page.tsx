@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sparkles, MessageSquareText, PhoneOutgoing } from "lucide-react";
+import { Sparkles, MessageSquareText, PhoneOutgoing, Database } from "lucide-react";
 import { DEFAULT_VOICE_PIPELINE, isVoicePipeline, type VoicePipeline } from "@/lib/voice-pipeline";
 import { SectionCard, Field, TextInput, TextArea, SaveButton } from "@/components/agent-settings-ui";
 import { useUnsavedChangesGuard } from "@/lib/hooks/use-unsaved-changes-guard";
@@ -9,6 +9,7 @@ import { useUnsavedChangesGuard } from "@/lib/hooks/use-unsaved-changes-guard";
 const SCRIPT_TABS = [
   { id: "inbound", label: "Inbound Script", icon: MessageSquareText },
   { id: "outbound", label: "Outbound Script", icon: PhoneOutgoing },
+  { id: "knowledge", label: "Knowledge Base", icon: Database },
 ] as const;
 
 type ScriptTabId = (typeof SCRIPT_TABS)[number]["id"];
@@ -31,6 +32,7 @@ export default function AgentScriptPage() {
   );
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [outboundSystemPrompt, setOutboundSystemPrompt] = useState("");
+  const [knowledgeBase, setKnowledgeBase] = useState("");
   // Not edited on this page, but carried through so saving here doesn't
   // reset the pipeline chosen on the Agent Settings page.
   const [voicePipeline, setVoicePipeline] = useState<VoicePipeline>(DEFAULT_VOICE_PIPELINE);
@@ -43,6 +45,7 @@ export default function AgentScriptPage() {
       welcomeMessage: "Hello. This is Priya from RegenOrthoSport",
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
       outboundSystemPrompt: "",
+      knowledgeBase: "",
       voicePipeline: DEFAULT_VOICE_PIPELINE,
     })
   );
@@ -58,6 +61,7 @@ export default function AgentScriptPage() {
           setWelcomeMessage(json.data.welcomeMessage);
           setSystemPrompt(json.data.systemPrompt);
           setOutboundSystemPrompt(json.data.outboundSystemPrompt ?? "");
+          setKnowledgeBase(json.data.knowledgeBase ?? "");
           setVoicePipeline(pipeline);
           setSavedSnapshot(
             JSON.stringify({
@@ -65,6 +69,7 @@ export default function AgentScriptPage() {
               welcomeMessage: json.data.welcomeMessage,
               systemPrompt: json.data.systemPrompt,
               outboundSystemPrompt: json.data.outboundSystemPrompt ?? "",
+              knowledgeBase: json.data.knowledgeBase ?? "",
               voicePipeline: pipeline,
             })
           );
@@ -80,7 +85,7 @@ export default function AgentScriptPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const currentSnapshot = JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, voicePipeline });
+  const currentSnapshot = JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, knowledgeBase, voicePipeline });
   const isDirty = savedSnapshot !== currentSnapshot;
   useUnsavedChangesGuard(isDirty);
 
@@ -91,7 +96,7 @@ export default function AgentScriptPage() {
       const res = await fetch("/api/agent-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, voicePipeline }),
+        body: JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, knowledgeBase, voicePipeline }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to save.");
@@ -204,6 +209,25 @@ export default function AgentScriptPage() {
               value={outboundSystemPrompt}
               onChange={(e) => setOutboundSystemPrompt(e.target.value)}
               placeholder="Leave empty to reuse the inbound prompt above for bulk call campaigns."
+            />
+          </SectionCard>
+        </div>
+      )}
+
+      {scriptSubTab === "knowledge" && (
+        <div className="space-y-6">
+          <SectionCard
+            title="Knowledge Base"
+            description="Detailed reference material — treatment/procedure explanations, condition mappings, pricing, anything the agent only needs when a caller asks about it specifically. The agent looks this up on demand instead of it being sent on every turn, which keeps the System Prompt lean and calls faster. Leave empty to skip this lookup entirely."
+          >
+            <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-400">
+              <Sparkles className="h-3.5 w-3.5" /> Prompt canvas
+            </div>
+            <TextArea
+              rows={20}
+              value={knowledgeBase}
+              onChange={(e) => setKnowledgeBase(e.target.value)}
+              placeholder="e.g. detailed treatment explanations, condition-to-treatment mappings, pricing tiers, doctor bios — anything long and reference-y rather than behavioral."
             />
           </SectionCard>
         </div>

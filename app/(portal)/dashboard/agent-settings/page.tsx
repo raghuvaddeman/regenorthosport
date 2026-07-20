@@ -68,6 +68,7 @@ export default function AgentSettingsPage() {
   );
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [outboundSystemPrompt, setOutboundSystemPrompt] = useState("");
+  const [knowledgeBase, setKnowledgeBase] = useState("");
   const [agentName, setAgentName] = useState("Priya");
   const [voicePipeline, setVoicePipeline] = useState<VoicePipeline>(DEFAULT_VOICE_PIPELINE);
   const [loadingAgentSettings, setLoadingAgentSettings] = useState(true);
@@ -82,6 +83,7 @@ export default function AgentSettingsPage() {
       welcomeMessage: "Hello. This is Priya from RegenOrthoSport",
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
       outboundSystemPrompt: "",
+      knowledgeBase: "",
       voicePipeline: DEFAULT_VOICE_PIPELINE,
     })
   );
@@ -97,6 +99,7 @@ export default function AgentSettingsPage() {
           setWelcomeMessage(json.data.welcomeMessage);
           setSystemPrompt(json.data.systemPrompt);
           setOutboundSystemPrompt(json.data.outboundSystemPrompt ?? "");
+          setKnowledgeBase(json.data.knowledgeBase ?? "");
           setVoicePipeline(pipeline);
           setSavedSnapshot(
             JSON.stringify({
@@ -104,6 +107,7 @@ export default function AgentSettingsPage() {
               welcomeMessage: json.data.welcomeMessage,
               systemPrompt: json.data.systemPrompt,
               outboundSystemPrompt: json.data.outboundSystemPrompt ?? "",
+              knowledgeBase: json.data.knowledgeBase ?? "",
               voicePipeline: pipeline,
             })
           );
@@ -147,7 +151,7 @@ export default function AgentSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
-  const currentSnapshot = JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, voicePipeline });
+  const currentSnapshot = JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, knowledgeBase, voicePipeline });
   const isDirty = savedSnapshot !== currentSnapshot;
   useUnsavedChangesGuard(isDirty);
 
@@ -158,7 +162,7 @@ export default function AgentSettingsPage() {
       const res = await fetch("/api/agent-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, voicePipeline }),
+        body: JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, knowledgeBase, voicePipeline }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to save.");

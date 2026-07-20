@@ -367,7 +367,7 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("agent_settings")
-      .select("agent_name, welcome_message, system_prompt, outbound_system_prompt, voice_pipeline")
+      .select("agent_name, welcome_message, system_prompt, outbound_system_prompt, voice_pipeline, knowledge_base")
       .eq("client_id", clientId)
       .maybeSingle();
 
@@ -384,6 +384,9 @@ export async function GET(request: NextRequest) {
         // happens (agent/worker.ts), not baked in here.
         outboundSystemPrompt: data?.outbound_system_prompt ?? "",
         voicePipeline: isVoicePipeline(data?.voice_pipeline) ? data.voice_pipeline : DEFAULT_VOICE_PIPELINE,
+        // Empty (not defaulted) on purpose — no knowledge base configured means
+        // the lookup tool just isn't offered to the LLM (see agent/worker.ts).
+        knowledgeBase: data?.knowledge_base ?? "",
       },
     });
   } catch (error: any) {
@@ -404,7 +407,7 @@ export async function POST(request: NextRequest) {
     const { clientId } = session;
 
     const body = await request.json();
-    const { agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, voicePipeline } = body;
+    const { agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, voicePipeline, knowledgeBase } = body;
 
     if (
       typeof agentName !== "string" ||
@@ -428,6 +431,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Optional — an empty/omitted knowledge base means the lookup tool isn't offered at all.
+    if (knowledgeBase !== undefined && typeof knowledgeBase !== "string") {
+      return NextResponse.json(
+        { success: false, error: "knowledgeBase must be a string." },
+        { status: 400 }
+      );
+    }
+
     if (voicePipeline !== undefined && !isVoicePipeline(voicePipeline)) {
       return NextResponse.json({ success: false, error: "Invalid voicePipeline." }, { status: 400 });
     }
@@ -441,6 +452,7 @@ export async function POST(request: NextRequest) {
         system_prompt: systemPrompt,
         outbound_system_prompt: outboundSystemPrompt?.trim() || null,
         voice_pipeline: voicePipeline ?? DEFAULT_VOICE_PIPELINE,
+        knowledge_base: knowledgeBase?.trim() || null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "client_id" }

@@ -115,6 +115,7 @@ async function fetchAgentSettings(): Promise<{
   systemPrompt: string;
   outboundSystemPrompt: string;
   voicePipeline: VoicePipeline;
+  knowledgeBase: string;
 } | null> {
   const appUrl = process.env.APP_URL;
   const secret = process.env.INTERNAL_SECRET_KEY;
@@ -227,6 +228,28 @@ function buildRsvpTool(contactId: string) {
         console.warn('record_rsvp: failed to persist RSVP:', err.message);
         return { recorded: false };
       }
+    },
+  });
+}
+
+/**
+ * Puts the tenant's detailed clinical/treatment reference text (Agent Script's
+ * Knowledge Base field) behind a tool call instead of always inlining it in the
+ * system prompt — added because it was ~50% of the prompt's token count
+ * (measured on a real tenant's prompt: TREATMENTS + CONDITIONS WE HANDLE
+ * sections) but only actually relevant on the subset of turns where a caller
+ * asks about specific treatments/conditions. Not real retrieval/search — just
+ * returns the whole configured text, since it's small enough (a few thousand
+ * chars) that splitting it further isn't worth the complexity yet.
+ */
+function buildKnowledgeLookupTool(knowledgeBase: string) {
+  return tool({
+    name: 'lookup_clinic_knowledge',
+    description:
+      "Look up detailed treatment, procedure, and medical-condition reference information before answering a caller's question about a specific treatment or condition. Always call this rather than answering from memory — it returns the clinic's authoritative reference text.",
+    parameters: z.object({}),
+    execute: async () => {
+      return knowledgeBase;
     },
   });
 }
@@ -1193,9 +1216,14 @@ export default defineAgent({
       ? campaignResolvedPrompt || settings?.outboundSystemPrompt || settings?.systemPrompt || FALLBACK_INSTRUCTIONS
       : (settings?.systemPrompt ?? FALLBACK_INSTRUCTIONS);
 
+    const tools = [
+      ...(settings?.knowledgeBase ? [buildKnowledgeLookupTool(settings.knowledgeBase)] : []),
+      ...(bulkCallInfo ? [buildRsvpTool(bulkCallInfo.contactId)] : []),
+    ];
+
     const agent = new voice.Agent({
       instructions,
-      tools: bulkCallInfo ? [buildRsvpTool(bulkCallInfo.contactId)] : undefined,
+      tools: tools.length ? tools : undefined,
     });
 
     await session.start({ agent, room: ctx.room });
