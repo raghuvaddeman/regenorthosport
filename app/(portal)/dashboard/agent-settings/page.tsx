@@ -69,6 +69,10 @@ export default function AgentSettingsPage() {
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [outboundSystemPrompt, setOutboundSystemPrompt] = useState("");
   const [knowledgeBase, setKnowledgeBase] = useState("");
+  // Not edited on this page (that's Agent Script's structured section editor) —
+  // carried through unchanged so saving here doesn't wipe out section
+  // organization/toggle state.
+  const [systemPromptSections, setSystemPromptSections] = useState<unknown>(null);
   const [agentName, setAgentName] = useState("Priya");
   const [voicePipeline, setVoicePipeline] = useState<VoicePipeline>(DEFAULT_VOICE_PIPELINE);
   const [loadingAgentSettings, setLoadingAgentSettings] = useState(true);
@@ -84,6 +88,7 @@ export default function AgentSettingsPage() {
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
       outboundSystemPrompt: "",
       knowledgeBase: "",
+      systemPromptSections: null as unknown,
       voicePipeline: DEFAULT_VOICE_PIPELINE,
     })
   );
@@ -100,6 +105,7 @@ export default function AgentSettingsPage() {
           setSystemPrompt(json.data.systemPrompt);
           setOutboundSystemPrompt(json.data.outboundSystemPrompt ?? "");
           setKnowledgeBase(json.data.knowledgeBase ?? "");
+          setSystemPromptSections(json.data.systemPromptSections ?? null);
           setVoicePipeline(pipeline);
           setSavedSnapshot(
             JSON.stringify({
@@ -108,6 +114,7 @@ export default function AgentSettingsPage() {
               systemPrompt: json.data.systemPrompt,
               outboundSystemPrompt: json.data.outboundSystemPrompt ?? "",
               knowledgeBase: json.data.knowledgeBase ?? "",
+              systemPromptSections: json.data.systemPromptSections ?? null,
               voicePipeline: pipeline,
             })
           );
@@ -151,7 +158,15 @@ export default function AgentSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
-  const currentSnapshot = JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, knowledgeBase, voicePipeline });
+  const currentSnapshot = JSON.stringify({
+    agentName,
+    welcomeMessage,
+    systemPrompt,
+    outboundSystemPrompt,
+    knowledgeBase,
+    systemPromptSections,
+    voicePipeline,
+  });
   const isDirty = savedSnapshot !== currentSnapshot;
   useUnsavedChangesGuard(isDirty);
 
@@ -162,7 +177,15 @@ export default function AgentSettingsPage() {
       const res = await fetch("/api/agent-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentName, welcomeMessage, systemPrompt, outboundSystemPrompt, knowledgeBase, voicePipeline }),
+        body: JSON.stringify({
+          agentName,
+          welcomeMessage,
+          systemPrompt,
+          outboundSystemPrompt,
+          knowledgeBase,
+          systemPromptSections,
+          voicePipeline,
+        }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to save.");
