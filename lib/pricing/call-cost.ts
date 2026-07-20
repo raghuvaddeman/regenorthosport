@@ -1,14 +1,16 @@
 // Per-call cost estimation across all voice pipelines (lib/voice-pipeline.ts):
 // Gemini LLM + Sarvam STT/TTS, Gemini Native Audio (realtime), OpenAI
-// Whisper + GPT + TTS, Sarvam LLM + STT/TTS, and xAI Grok Voice (realtime)
-// — plus LiveKit infra cost, common to all of them.
+// Whisper + GPT + TTS, Sarvam LLM + STT/TTS, xAI Grok Voice (realtime), and
+// GPT-4.1 Mini + Soniox + Cartesia — plus LiveKit infra cost, common to all of them.
 //
 // Rates verified against official pricing pages / vendor docs on 2026-07-15
-// (xAI added 2026-07-18):
+// (xAI added 2026-07-18, Soniox/Cartesia added 2026-07-20):
 //   Gemini (text + Live API): https://ai.google.dev/gemini-api/docs/pricing
 //   Sarvam:                   https://docs.sarvam.ai/api-reference-docs/pricing
 //   OpenAI:                   https://developers.openai.com/api/docs/pricing
 //   xAI:                      https://docs.x.ai/developers/pricing
+//   Soniox:                   https://soniox.com/pricing
+//   Cartesia:                 https://www.cartesia.ai/pricing
 //   LiveKit:                  https://livekit.com/pricing
 //
 // Does NOT include Vobiz's own PSTN/telephony billing — that's separate from
@@ -20,9 +22,10 @@ export const PRICING_VERSION = "2026-07";
 // TODO(cost): update when FX moves meaningfully.
 export const INR_PER_USD = 95.5;
 
-// Text-generation LLM pricing, keyed by model name — covers both the Gemini
-// text model (gemini_sarvam pipeline, and the classification/translation
-// calls every pipeline makes) and OpenAI's chat model (openai_full pipeline).
+// Text-generation LLM pricing, keyed by model name — covers the Gemini text
+// model (gemini_sarvam pipeline, and the classification/translation calls
+// every pipeline makes), OpenAI's chat model (openai_full pipeline), Sarvam's
+// LLM (sarvam_full pipeline), and GPT-4.1 Mini (soniox_cartesia pipeline).
 export const LLM_PRICING: Record<string, { inputPerMTokUsd: number; outputPerMTokUsd: number }> = {
   "gemini-3.1-flash-lite": { inputPerMTokUsd: 0.25, outputPerMTokUsd: 1.5 },
   "gpt-5-mini": { inputPerMTokUsd: 0.25, outputPerMTokUsd: 2.0 },
@@ -32,16 +35,25 @@ export const LLM_PRICING: Record<string, { inputPerMTokUsd: number; outputPerMTo
   "sarvam-30b": { inputPerMTokUsd: 2.5 / INR_PER_USD, outputPerMTokUsd: 10 / INR_PER_USD },
   // ₹4/₹16 per 1M input/output tokens.
   "sarvam-105b": { inputPerMTokUsd: 4 / INR_PER_USD, outputPerMTokUsd: 16 / INR_PER_USD },
+  // $0.40/$1.60 per 1M input/output tokens (soniox_cartesia pipeline) — per
+  // developers.openai.com/api/docs/models/gpt-4.1-mini as of 2026-07-20.
+  "gpt-4.1-mini": { inputPerMTokUsd: 0.40, outputPerMTokUsd: 1.60 },
 };
 
-// STT pricing, keyed by model name — Sarvam (gemini_sarvam) and OpenAI Whisper (openai_full).
+// STT pricing, keyed by model name — Sarvam (gemini_sarvam), OpenAI Whisper (openai_full),
+// and Soniox (soniox_cartesia).
 export const STT_PRICING: Record<string, { inrPerHour: number }> = {
   "saaras:v3": { inrPerHour: 30 },
   // $0.006/min = $0.36/hr.
   "whisper-1": { inrPerHour: 0.36 * INR_PER_USD },
+  // $0.12/hr for Soniox's real-time streaming endpoint (soniox_cartesia pipeline uses
+  // stt-rt-v4) — per soniox.com/pricing as of 2026-07-20. Async/file transcription is
+  // cheaper ($0.10/hr) but not what a live call uses.
+  "stt-rt-v4": { inrPerHour: 0.12 * INR_PER_USD },
 };
 
-// TTS pricing, keyed by model name — Sarvam (gemini_sarvam) and OpenAI (openai_full).
+// TTS pricing, keyed by model name — Sarvam (gemini_sarvam), OpenAI (openai_full),
+// and Cartesia (soniox_cartesia).
 export const TTS_PRICING: Record<string, { inrPer10kChars: number }> = {
   "bulbul:v2": { inrPer10kChars: 15 },
   // 2x bulbul:v2's rate, and explicitly "beta pricing" per Sarvam's pricing page as of
@@ -49,6 +61,12 @@ export const TTS_PRICING: Record<string, { inrPer10kChars: number }> = {
   "bulbul:v3": { inrPer10kChars: 30 },
   // $15/1M chars = $0.15/10k chars.
   "tts-1": { inrPer10kChars: 0.15 * INR_PER_USD },
+  // TODO(cost): Cartesia (soniox_cartesia pipeline, sonic-3) doesn't publish a flat
+  // pay-as-you-go per-character rate — it bills via monthly subscription credits
+  // (1 credit/char) at a tier-dependent rate. Using the entry paid tier's rate ($5/mo
+  // for 100k credits = $0.05/1k chars = $0.50/10k chars) as of cartesia.ai/pricing on
+  // 2026-07-20 — revisit if the actual plan tier in use differs.
+  "sonic-3": { inrPer10kChars: 0.50 * INR_PER_USD },
 };
 
 // Gemini Live API (native audio, gemini_native pipeline) — a single realtime

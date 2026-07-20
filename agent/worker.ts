@@ -22,6 +22,8 @@ import * as sarvam from '@livekit/agents-plugin-sarvam';
 import * as openai from '@livekit/agents-plugin-openai';
 import * as silero from '@livekit/agents-plugin-silero';
 import * as xai from '@livekit/agents-plugin-xai';
+import * as soniox from '@livekit/agents-plugin-soniox';
+import * as cartesia from '@livekit/agents-plugin-cartesia';
 import { EgressClient } from 'livekit-server-sdk';
 import { EncodedFileOutput, EncodedFileType, S3Upload } from '@livekit/protocol';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -245,9 +247,9 @@ const MODEL_DEFAULTS = {
   ttsVoice: 'priya',
 };
 
-// Fixed defaults for the two alternate voice pipelines (lib/voice-pipeline.ts) — not
+// Fixed defaults for the alternate voice pipelines (lib/voice-pipeline.ts) — not
 // tenant-configurable yet (see the "simple 3-way switch" scope for this feature).
-// Pricing for both is in lib/pricing/call-cost.ts, keyed by these exact model names.
+// Pricing for each is in lib/pricing/call-cost.ts, keyed by these exact model names.
 const OPENAI_PIPELINE_DEFAULTS = {
   llmModel: 'gpt-5-mini',
   sttModel: 'whisper-1',
@@ -287,6 +289,18 @@ const SARVAM_PIPELINE_DEFAULTS = {
 const XAI_VOICE_PIPELINE_DEFAULTS = {
   model: 'grok-voice-think-fast-1.0',
   voice: 'eve',
+};
+
+// Third distinct alternate stack: OpenAI's GPT-4.1 Mini for the LLM, Soniox for STT,
+// Cartesia for TTS — all separate vendors from Gemini/Sarvam/OpenAI-full-stack/xAI.
+// ttsVoice is Cartesia's own SDK default voice ID (@livekit/agents-plugin-cartesia's
+// TTSDefaultVoiceId) — swap after a real test call to whichever built-in voice sounds
+// best for this workload; pricing for this combo is in lib/pricing/call-cost.ts.
+const SONIOX_CARTESIA_PIPELINE_DEFAULTS = {
+  llmModel: 'gpt-4.1-mini',
+  sttModel: 'stt-rt-v4',
+  ttsModel: 'sonic-3',
+  ttsVoice: 'f786b574-daa5-4673-aa0c-cbe3e8534c02',
 };
 
 /** Fetches the tenant's chosen LLM/STT/TTS models and TTS voice from the Providers page, falling back to defaults. */
@@ -1038,6 +1052,21 @@ export default defineAgent({
           endpointing: { minDelay: ENDPOINTING_MIN_DELAY_MS, maxDelay: ENDPOINTING_MAX_DELAY_MS },
         },
       });
+    } else if (voicePipeline === 'soniox_cartesia') {
+      session = new voice.AgentSession({
+        vad: ctx.proc.userData.vad as silero.VAD,
+        stt: new soniox.STT({ apiKey: process.env.SONIOX_API_KEY, model: SONIOX_CARTESIA_PIPELINE_DEFAULTS.sttModel }),
+        llm: new openai.LLM({ apiKey: process.env.OPENAI_API_KEY, model: SONIOX_CARTESIA_PIPELINE_DEFAULTS.llmModel }),
+        tts: new cartesia.TTS({
+          apiKey: process.env.CARTESIA_API_KEY,
+          model: SONIOX_CARTESIA_PIPELINE_DEFAULTS.ttsModel,
+          voice: SONIOX_CARTESIA_PIPELINE_DEFAULTS.ttsVoice,
+          language: 'en',
+        }),
+        turnHandling: {
+          endpointing: { minDelay: ENDPOINTING_MIN_DELAY_MS, maxDelay: ENDPOINTING_MAX_DELAY_MS },
+        },
+      });
     } else {
       session = new voice.AgentSession({
         vad: ctx.proc.userData.vad as silero.VAD,
@@ -1075,14 +1104,28 @@ export default defineAgent({
             ? XAI_VOICE_PIPELINE_DEFAULTS.model
             : voicePipeline === 'sarvam_full'
               ? SARVAM_PIPELINE_DEFAULTS.llmModel
-              : geminiModel;
+              : voicePipeline === 'soniox_cartesia'
+                ? SONIOX_CARTESIA_PIPELINE_DEFAULTS.llmModel
+                : geminiModel;
 
     attachLatencyLogging(session, {
       voicePipeline,
       llmModel: pipelineLlmModel,
       classificationModel: geminiModel,
-      sttModel: isFusedRealtimePipeline ? null : voicePipeline === 'openai_full' ? OPENAI_PIPELINE_DEFAULTS.sttModel : models.sttModel,
-      ttsModel: isFusedRealtimePipeline ? null : voicePipeline === 'openai_full' ? OPENAI_PIPELINE_DEFAULTS.ttsModel : models.ttsModel,
+      sttModel: isFusedRealtimePipeline
+        ? null
+        : voicePipeline === 'openai_full'
+          ? OPENAI_PIPELINE_DEFAULTS.sttModel
+          : voicePipeline === 'soniox_cartesia'
+            ? SONIOX_CARTESIA_PIPELINE_DEFAULTS.sttModel
+            : models.sttModel,
+      ttsModel: isFusedRealtimePipeline
+        ? null
+        : voicePipeline === 'openai_full'
+          ? OPENAI_PIPELINE_DEFAULTS.ttsModel
+          : voicePipeline === 'soniox_cartesia'
+            ? SONIOX_CARTESIA_PIPELINE_DEFAULTS.ttsModel
+            : models.ttsModel,
       thinkingBudget: GEMINI_THINKING_BUDGET,
       thinkingLevel: GEMINI_THINKING_LEVEL,
       endpointingMinDelayMs: isFusedRealtimePipeline ? null : ENDPOINTING_MIN_DELAY_MS,

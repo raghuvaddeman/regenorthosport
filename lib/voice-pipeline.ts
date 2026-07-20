@@ -3,7 +3,7 @@
 // per-tenant via agent_settings.voice_pipeline. Keep in sync with the branch
 // in worker.ts's entrypoint that constructs the AgentSession for each.
 
-export const VOICE_PIPELINES = ["gemini_sarvam", "gemini_native", "openai_full", "sarvam_full", "grok_voice"] as const;
+export const VOICE_PIPELINES = ["gemini_sarvam", "gemini_native", "openai_full", "sarvam_full", "grok_voice", "soniox_cartesia"] as const;
 export type VoicePipeline = (typeof VOICE_PIPELINES)[number];
 
 export const VOICE_PIPELINE_INFO: Record<VoicePipeline, { label: string; description: string }> = {
@@ -29,6 +29,11 @@ export const VOICE_PIPELINE_INFO: Record<VoicePipeline, { label: string; descrip
     label: "xAI Grok Voice",
     description:
       "xAI's single realtime voice model (like Gemini Native Audio) handles listening and speaking together. Billed by call duration ($3/hr) rather than tokens. Supports Hindi, but not the broader regional-language spread Sarvam covers — test before relying on it for real patients.",
+  },
+  soniox_cartesia: {
+    label: "GPT-4.1 Mini + Soniox + Cartesia",
+    description:
+      "GPT-4.1 Mini for the LLM, Soniox for speech-to-text, and Cartesia for text-to-speech — a fully separate stack from Gemini/Sarvam/OpenAI. Cheap and low-latency for English-dominant calls, but neither Soniox nor Cartesia is Indic-language-specialized like Sarvam — test before relying on it for Telugu/Hindi-heavy calls.",
   },
 };
 
