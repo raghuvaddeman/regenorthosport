@@ -3,7 +3,16 @@
 // per-tenant via agent_settings.voice_pipeline. Keep in sync with the branch
 // in worker.ts's entrypoint that constructs the AgentSession for each.
 
-export const VOICE_PIPELINES = ["gemini_sarvam", "gemini_native", "openai_full", "sarvam_full", "grok_voice", "soniox_cartesia"] as const;
+export const VOICE_PIPELINES = [
+  "gemini_sarvam",
+  "gemini_native",
+  "openai_full",
+  "sarvam_full",
+  "grok_voice",
+  "soniox_cartesia",
+  "gpt_sarvam",
+  "claude_sarvam",
+] as const;
 export type VoicePipeline = (typeof VOICE_PIPELINES)[number];
 
 export const VOICE_PIPELINE_INFO: Record<VoicePipeline, { label: string; description: string }> = {
@@ -34,6 +43,16 @@ export const VOICE_PIPELINE_INFO: Record<VoicePipeline, { label: string; descrip
     label: "GPT-4.1 Mini + Soniox + Cartesia",
     description:
       "GPT-4.1 Mini for the LLM, Soniox for speech-to-text, and Cartesia for text-to-speech — a fully separate stack from Gemini/Sarvam/OpenAI. Cheap and low-latency for English-dominant calls, but neither Soniox nor Cartesia is Indic-language-specialized like Sarvam — test before relying on it for Telugu/Hindi-heavy calls.",
+  },
+  gpt_sarvam: {
+    label: "GPT-4.1 Mini + Sarvam",
+    description:
+      "GPT-4.1 Mini for the LLM, alongside Sarvam's own speech-to-text and text-to-speech (same voice pipeline as Gemini + Sarvam) — isolates whether GPT-4.1 Mini's booking-flow reasoning beats Gemini's, without changing the Indian-language voice quality.",
+  },
+  claude_sarvam: {
+    label: "Claude Haiku + Sarvam",
+    description:
+      "Anthropic's Claude Haiku 4.5 for the LLM, alongside Sarvam's own speech-to-text and text-to-speech (same voice pipeline as Gemini + Sarvam) — a fast, strong-instruction-following alternative LLM, with Indian-language voice quality held constant.",
   },
 };
 

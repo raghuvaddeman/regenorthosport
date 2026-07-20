@@ -24,6 +24,7 @@ import * as silero from '@livekit/agents-plugin-silero';
 import * as xai from '@livekit/agents-plugin-xai';
 import * as soniox from '@livekit/agents-plugin-soniox';
 import * as cartesia from '@livekit/agents-plugin-cartesia';
+import * as anthropic from '@livekit/agents-plugin-anthropic';
 import { EgressClient } from 'livekit-server-sdk';
 import { EncodedFileOutput, EncodedFileType, S3Upload } from '@livekit/protocol';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -301,6 +302,19 @@ const SONIOX_CARTESIA_PIPELINE_DEFAULTS = {
   sttModel: 'stt-rt-v4',
   ttsModel: 'sonic-3',
   ttsVoice: 'f786b574-daa5-4673-aa0c-cbe3e8534c02',
+};
+
+// LLM-only swaps against the same Sarvam STT/TTS as gemini_sarvam/sarvam_full — isolates
+// whether a different LLM's reasoning/instruction-following beats Gemini's, without
+// changing the (already Indic-proven) voice quality. See SARVAM_LLM_BASE_URL comment
+// above for why sarvam_full's LLM reuses openai.LLM instead of a custom adapter — these
+// two use their own dedicated plugins (openai.LLM, anthropic.LLM) since they're not
+// pointed at Sarvam's endpoint.
+const GPT_SARVAM_PIPELINE_DEFAULTS = {
+  llmModel: 'gpt-4.1-mini',
+};
+const CLAUDE_SARVAM_PIPELINE_DEFAULTS = {
+  llmModel: 'claude-haiku-4-5-20251001',
 };
 
 /** Fetches the tenant's chosen LLM/STT/TTS models and TTS voice from the Providers page, falling back to defaults. */
@@ -1067,6 +1081,36 @@ export default defineAgent({
           endpointing: { minDelay: ENDPOINTING_MIN_DELAY_MS, maxDelay: ENDPOINTING_MAX_DELAY_MS },
         },
       });
+    } else if (voicePipeline === 'gpt_sarvam') {
+      session = new voice.AgentSession({
+        vad: ctx.proc.userData.vad as silero.VAD,
+        stt: new sarvam.STT({ model: models.sttModel as any, languageCode: 'en-IN' }),
+        llm: new openai.LLM({ apiKey: process.env.OPENAI_API_KEY, model: GPT_SARVAM_PIPELINE_DEFAULTS.llmModel }),
+        tts: new sarvam.TTS({
+          model: models.ttsModel as any,
+          speaker: models.ttsVoice,
+          targetLanguageCode: 'en-IN',
+          temperature: 1.0,
+        }),
+        turnHandling: {
+          endpointing: { minDelay: ENDPOINTING_MIN_DELAY_MS, maxDelay: ENDPOINTING_MAX_DELAY_MS },
+        },
+      });
+    } else if (voicePipeline === 'claude_sarvam') {
+      session = new voice.AgentSession({
+        vad: ctx.proc.userData.vad as silero.VAD,
+        stt: new sarvam.STT({ model: models.sttModel as any, languageCode: 'en-IN' }),
+        llm: new anthropic.LLM({ apiKey: process.env.ANTHROPIC_API_KEY, model: CLAUDE_SARVAM_PIPELINE_DEFAULTS.llmModel }),
+        tts: new sarvam.TTS({
+          model: models.ttsModel as any,
+          speaker: models.ttsVoice,
+          targetLanguageCode: 'en-IN',
+          temperature: 1.0,
+        }),
+        turnHandling: {
+          endpointing: { minDelay: ENDPOINTING_MIN_DELAY_MS, maxDelay: ENDPOINTING_MAX_DELAY_MS },
+        },
+      });
     } else {
       session = new voice.AgentSession({
         vad: ctx.proc.userData.vad as silero.VAD,
@@ -1106,7 +1150,11 @@ export default defineAgent({
               ? SARVAM_PIPELINE_DEFAULTS.llmModel
               : voicePipeline === 'soniox_cartesia'
                 ? SONIOX_CARTESIA_PIPELINE_DEFAULTS.llmModel
-                : geminiModel;
+                : voicePipeline === 'gpt_sarvam'
+                  ? GPT_SARVAM_PIPELINE_DEFAULTS.llmModel
+                  : voicePipeline === 'claude_sarvam'
+                    ? CLAUDE_SARVAM_PIPELINE_DEFAULTS.llmModel
+                    : geminiModel;
 
     attachLatencyLogging(session, {
       voicePipeline,

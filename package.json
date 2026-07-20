@@ -16,6 +16,7 @@
     "@clerk/nextjs": "^7.5.12",
     "@google/genai": "^1.52.0",
     "@livekit/agents": "^1.5.0",
+    "@livekit/agents-plugin-anthropic": "^1.0.0",
     "@livekit/agents-plugin-cartesia": "^1.5.0",
     "@livekit/agents-plugin-google": "^1.5.0",
     "@livekit/agents-plugin-openai": "^1.5.0",

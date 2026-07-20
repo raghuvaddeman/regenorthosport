@@ -1,16 +1,18 @@
 // Per-call cost estimation across all voice pipelines (lib/voice-pipeline.ts):
 // Gemini LLM + Sarvam STT/TTS, Gemini Native Audio (realtime), OpenAI
-// Whisper + GPT + TTS, Sarvam LLM + STT/TTS, xAI Grok Voice (realtime), and
-// GPT-4.1 Mini + Soniox + Cartesia — plus LiveKit infra cost, common to all of them.
+// Whisper + GPT + TTS, Sarvam LLM + STT/TTS, xAI Grok Voice (realtime),
+// GPT-4.1 Mini + Soniox + Cartesia, and GPT-4.1 Mini / Claude Haiku swapped
+// in against Sarvam's STT/TTS — plus LiveKit infra cost, common to all of them.
 //
 // Rates verified against official pricing pages / vendor docs on 2026-07-15
-// (xAI added 2026-07-18, Soniox/Cartesia added 2026-07-20):
+// (xAI added 2026-07-18, Soniox/Cartesia/Anthropic added 2026-07-20):
 //   Gemini (text + Live API): https://ai.google.dev/gemini-api/docs/pricing
 //   Sarvam:                   https://docs.sarvam.ai/api-reference-docs/pricing
 //   OpenAI:                   https://developers.openai.com/api/docs/pricing
 //   xAI:                      https://docs.x.ai/developers/pricing
 //   Soniox:                   https://soniox.com/pricing
 //   Cartesia:                 https://www.cartesia.ai/pricing
+//   Anthropic:                https://platform.claude.com/docs/en/about-claude/pricing
 //   LiveKit:                  https://livekit.com/pricing
 //
 // Does NOT include Vobiz's own PSTN/telephony billing — that's separate from
@@ -25,7 +27,8 @@ export const INR_PER_USD = 95.5;
 // Text-generation LLM pricing, keyed by model name — covers the Gemini text
 // model (gemini_sarvam pipeline, and the classification/translation calls
 // every pipeline makes), OpenAI's chat model (openai_full pipeline), Sarvam's
-// LLM (sarvam_full pipeline), and GPT-4.1 Mini (soniox_cartesia pipeline).
+// LLM (sarvam_full pipeline), GPT-4.1 Mini (soniox_cartesia and gpt_sarvam
+// pipelines), and Claude Haiku 4.5 (claude_sarvam pipeline).
 export const LLM_PRICING: Record<string, { inputPerMTokUsd: number; outputPerMTokUsd: number }> = {
   "gemini-3.1-flash-lite": { inputPerMTokUsd: 0.25, outputPerMTokUsd: 1.5 },
   "gpt-5-mini": { inputPerMTokUsd: 0.25, outputPerMTokUsd: 2.0 },
@@ -35,9 +38,12 @@ export const LLM_PRICING: Record<string, { inputPerMTokUsd: number; outputPerMTo
   "sarvam-30b": { inputPerMTokUsd: 2.5 / INR_PER_USD, outputPerMTokUsd: 10 / INR_PER_USD },
   // ₹4/₹16 per 1M input/output tokens.
   "sarvam-105b": { inputPerMTokUsd: 4 / INR_PER_USD, outputPerMTokUsd: 16 / INR_PER_USD },
-  // $0.40/$1.60 per 1M input/output tokens (soniox_cartesia pipeline) — per
-  // developers.openai.com/api/docs/models/gpt-4.1-mini as of 2026-07-20.
+  // $0.40/$1.60 per 1M input/output tokens (soniox_cartesia and gpt_sarvam
+  // pipelines) — per developers.openai.com/api/docs/models/gpt-4.1-mini as of 2026-07-20.
   "gpt-4.1-mini": { inputPerMTokUsd: 0.40, outputPerMTokUsd: 1.60 },
+  // $1/$5 per 1M input/output tokens (claude_sarvam pipeline) — per
+  // platform.claude.com/docs/en/about-claude/pricing as of 2026-07-20.
+  "claude-haiku-4-5-20251001": { inputPerMTokUsd: 1.0, outputPerMTokUsd: 5.0 },
 };
 
 // STT pricing, keyed by model name — Sarvam (gemini_sarvam), OpenAI Whisper (openai_full),
