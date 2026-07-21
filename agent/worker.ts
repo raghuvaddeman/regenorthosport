@@ -15,6 +15,7 @@ import {
   type JobContext,
   type JobProcess,
   type MetricsCollectedEvent,
+  type SpeechCreatedEvent,
   ServerOptions,
 } from '@livekit/agents';
 import * as google from '@livekit/agents-plugin-google';
@@ -251,6 +252,30 @@ function buildKnowledgeLookupTool(knowledgeBase: string) {
     execute: async () => {
       return knowledgeBase;
     },
+  });
+}
+
+/**
+ * Lets the agent proactively hang up (instead of only reacting to the caller
+ * disconnecting) once it's said its closing line or the caller has made clear
+ * the call is over. This tool doesn't close the session itself — it can't
+ * safely: SpeechHandle.waitForPlayout() throws SpeechHandleCircularWaitError
+ * if awaited from inside the very tool call that owns that speech (the
+ * handle can't finish until the tool returns, and the tool would be waiting
+ * on the handle — a real deadlock). Instead, a FunctionToolsExecuted
+ * listener outside the tool (installed once per call, see below) detects
+ * this tool by name, waits for the *previously captured* SpeechHandle — i.e.
+ * the closing line's own playout — to finish, then closes the session.
+ * Session close only tears down the agent's own participant;
+ * deleteRoomOnClose on session.start (below) is what actually ends the SIP leg.
+ */
+function buildEndCallTool() {
+  return tool({
+    name: 'end_call',
+    description:
+      "Call this immediately after speaking your final closing line (e.g. \"Thank you for calling RegenOrthoSport\"), or as soon as the caller has clearly indicated the conversation is over (they've thanked you and have nothing further to ask). This hangs up the call — never call it mid-conversation or before your closing line has been said.",
+    parameters: z.object({}),
+    execute: async () => ({ ending: true }),
   });
 }
 
@@ -1208,6 +1233,26 @@ export default defineAgent({
       egressClient,
     });
 
+    // Agent-initiated hangup (end_call tool, defined above) — see that
+    // function's comment for why the close has to happen from here rather
+    // than inside the tool itself.
+    let latestSpeechHandle: SpeechCreatedEvent['speechHandle'] | null = null;
+    session.on(AgentSessionEventTypes.SpeechCreated, (ev) => {
+      latestSpeechHandle = ev.speechHandle;
+    });
+    session.on(AgentSessionEventTypes.FunctionToolsExecuted, (ev) => {
+      if (!ev.functionCalls.some((call) => call.name === 'end_call')) return;
+      const handle = latestSpeechHandle;
+      void (async () => {
+        try {
+          if (handle) await handle.waitForPlayout();
+        } catch (err: any) {
+          console.warn('end_call: waitForPlayout failed, closing anyway:', err.message);
+        }
+        await session.close();
+      })();
+    });
+
     // Resolution order for bulk calls: the campaign's own locked-in script
     // (placeholders already filled in at creation time) beats the tenant-wide
     // outbound prompt, which beats the inbound prompt, which beats the
@@ -1217,6 +1262,7 @@ export default defineAgent({
       : (settings?.systemPrompt ?? FALLBACK_INSTRUCTIONS);
 
     const tools = [
+      buildEndCallTool(),
       ...(settings?.knowledgeBase ? [buildKnowledgeLookupTool(settings.knowledgeBase)] : []),
       ...(bulkCallInfo ? [buildRsvpTool(bulkCallInfo.contactId)] : []),
     ];
@@ -1226,7 +1272,11 @@ export default defineAgent({
       tools: tools.length ? tools : undefined,
     });
 
-    await session.start({ agent, room: ctx.room });
+    // deleteRoomOnClose: the FunctionToolsExecuted listener above only ends
+    // this agent's own session (session.close()) — without this, the SIP
+    // leg would stay connected with no agent on the line. This makes
+    // session.close() also delete the room, which hangs up the SIP call too.
+    await session.start({ agent, room: ctx.room, inputOptions: { deleteRoomOnClose: true } });
 
     // Captured once here (participant is definitely connected by now) rather than
     // re-read at session Close, where the disconnecting participant may already be
