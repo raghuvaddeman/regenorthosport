@@ -1262,7 +1262,17 @@ export default defineAgent({
       : (settings?.systemPrompt ?? FALLBACK_INSTRUCTIONS);
 
     const tools = [
-      buildEndCallTool(),
+      // end_call DISABLED as of 2026-07-22 — a real call hung up after only the
+      // greeting (session closed with reason=user_initiated, the unique fingerprint
+      // of this tool firing) with no CALL ENDING prompt instruction present at all,
+      // meaning the tool's own description alone was enough to trigger it during
+      // what looked like a greeting-playback glitch (a
+      // "SegmentSynchronizerImpl.markPlaybackFinished called before text/audio input
+      // is done" warning immediately preceded it). Re-enable only after that
+      // interaction is understood — see buildEndCallTool's comment for the
+      // close-then-deleteRoomOnClose mechanism, which itself is fine; the problem is
+      // the LLM invoking the tool inappropriately, not the hangup mechanics.
+      // buildEndCallTool(),
       ...(settings?.knowledgeBase ? [buildKnowledgeLookupTool(settings.knowledgeBase)] : []),
       ...(bulkCallInfo ? [buildRsvpTool(bulkCallInfo.contactId)] : []),
     ];
