@@ -368,7 +368,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase
       .from("agent_settings")
       .select(
-        "agent_name, welcome_message, system_prompt, outbound_system_prompt, voice_pipeline, knowledge_base, system_prompt_sections"
+        "agent_name, welcome_message, system_prompt, outbound_system_prompt, voice_pipeline, knowledge_base, system_prompt_sections, greeting_audio_url"
       )
       .eq("client_id", clientId)
       .maybeSingle();
@@ -396,6 +396,9 @@ export async function GET(request: NextRequest) {
         // (which sections exist, their order, and which are enabled) so toggle
         // state survives a reload instead of being re-guessed every time.
         systemPromptSections: data?.system_prompt_sections ?? null,
+        // null means "use the fixed default clip in agent/worker.ts" — see
+        // app/api/agent-settings/greeting-audio/route.ts for how this gets set.
+        greetingAudioUrl: data?.greeting_audio_url ?? null,
       },
     });
   } catch (error: any) {

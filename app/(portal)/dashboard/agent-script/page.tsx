@@ -13,6 +13,8 @@ import {
   Plus,
   Code,
   ListTree,
+  Upload,
+  RotateCcw,
 } from "lucide-react";
 import { DEFAULT_VOICE_PIPELINE, isVoicePipeline, type VoicePipeline } from "@/lib/voice-pipeline";
 import { SectionCard, Field, TextInput, TextArea, SaveButton } from "@/components/agent-settings-ui";
@@ -204,6 +206,13 @@ export default function AgentScriptPage() {
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [outboundSystemPrompt, setOutboundSystemPrompt] = useState("");
   const [knowledgeBase, setKnowledgeBase] = useState("");
+  // Uploaded/deleted immediately (its own network round-trip via
+  // /api/agent-settings/greeting-audio), not staged behind the main Save
+  // button — null means "use the fixed default clip in agent/worker.ts".
+  const [greetingAudioUrl, setGreetingAudioUrl] = useState<string | null>(null);
+  const [greetingUploading, setGreetingUploading] = useState(false);
+  const [greetingError, setGreetingError] = useState<string | null>(null);
+  const greetingFileInputRef = useRef<HTMLInputElement>(null);
   // The structured view of systemPrompt — see the "Prompt section editor" comment
   // above. null means "not loaded/parsed yet"; sectionsViewMode controls which
   // editor (Sections vs. Raw text) is currently shown for the inbound prompt.
@@ -251,6 +260,7 @@ export default function AgentScriptPage() {
           setSystemPrompt(json.data.systemPrompt);
           setOutboundSystemPrompt(json.data.outboundSystemPrompt ?? "");
           setKnowledgeBase(json.data.knowledgeBase ?? "");
+          setGreetingAudioUrl(json.data.greetingAudioUrl ?? null);
           setSections(loadedSections);
           setVoicePipeline(pipeline);
           setSavedSnapshot(
@@ -306,6 +316,41 @@ export default function AgentScriptPage() {
       setSaveError(err instanceof Error ? err.message : "Failed to save.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleGreetingFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same filename later
+    if (!file) return;
+    setGreetingUploading(true);
+    setGreetingError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/agent-settings/greeting-audio", { method: "POST", body: formData });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Upload failed.");
+      setGreetingAudioUrl(json.url);
+    } catch (err) {
+      setGreetingError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setGreetingUploading(false);
+    }
+  }
+
+  async function handleGreetingReset() {
+    setGreetingUploading(true);
+    setGreetingError(null);
+    try {
+      const res = await fetch("/api/agent-settings/greeting-audio", { method: "DELETE" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to reset.");
+      setGreetingAudioUrl(null);
+    } catch (err) {
+      setGreetingError(err instanceof Error ? err.message : "Failed to reset.");
+    } finally {
+      setGreetingUploading(false);
     }
   }
 
@@ -367,7 +412,52 @@ export default function AgentScriptPage() {
             <Field label="Agent name" hint="Displayed internally in call logs and transcripts.">
               <TextInput value={agentName} onChange={(e) => setAgentName(e.target.value)} />
             </Field>
-            <Field label="Welcome message" hint="Spoken at the start of every inbound call.">
+            <Field
+              label="Greeting Audio"
+              hint="Uploads and reverts take effect immediately — not part of Save changes above."
+            >
+              <div className="space-y-2">
+                {greetingAudioUrl ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <audio controls src={greetingAudioUrl} className="h-9 max-w-full" />
+                    <button
+                      type="button"
+                      onClick={handleGreetingReset}
+                      disabled={greetingUploading}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-500 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" /> Reset to default
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">Using the default recorded greeting.</p>
+                )}
+                <div>
+                  <input
+                    ref={greetingFileInputRef}
+                    type="file"
+                    accept="audio/wav,.wav"
+                    onChange={handleGreetingFileSelected}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => greetingFileInputRef.current?.click()}
+                    disabled={greetingUploading}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-500 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    {greetingUploading ? "Uploading..." : greetingAudioUrl ? "Upload a different file" : "Upload audio"}
+                  </button>
+                  <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">16-bit PCM WAV only — other formats will be rejected.</p>
+                </div>
+                {greetingError && <p className="text-xs text-red-500">{greetingError}</p>}
+              </div>
+            </Field>
+            <Field
+              label="Welcome message"
+              hint="What the agent's own transcript records as having been spoken. If you've uploaded a Greeting Audio file above, keep this in sync with exactly what that file says — otherwise the built-in default greeting is used regardless of this text."
+            >
               <TextInput
                 value={welcomeMessage}
                 onChange={(e) => setWelcomeMessage(e.target.value)}
