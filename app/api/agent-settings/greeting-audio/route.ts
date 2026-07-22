@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { getSessionInfo } from "@/lib/auth/session";
 import { isManagerOrAbove } from "@/lib/roles";
 import { parseWavPcm16 } from "@/lib/audio/wav";
+import { DEFAULTS } from "@/lib/agent-settings-defaults";
 
 const STORAGE_BUCKET = "greeting-audio";
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10MB — a greeting clip is a few seconds, this is generous headroom.
@@ -58,10 +59,28 @@ export async function POST(request: NextRequest) {
     const { data: publicUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
     const url = `${publicUrlData.publicUrl}?v=${Date.now()}`; // cache-bust so a re-upload isn't served stale
 
-    const { error: dbError } = await supabase
+    // agent_name/welcome_message/system_prompt are NOT NULL columns. If this tenant has never
+    // saved Agent Script before, there's no row to update yet — an upsert touching only
+    // greeting_audio_url would try to INSERT a row missing those and get rejected by the DB.
+    // Update first; only insert (with full defaults) if no row existed to update.
+    const { data: updated, error: updateError } = await supabase
       .from("agent_settings")
-      .upsert({ client_id: clientId, greeting_audio_url: url, updated_at: new Date().toISOString() }, { onConflict: "client_id" });
-    if (dbError) throw dbError;
+      .update({ greeting_audio_url: url, updated_at: new Date().toISOString() })
+      .eq("client_id", clientId)
+      .select("client_id");
+    if (updateError) throw updateError;
+
+    if (!updated || updated.length === 0) {
+      const { error: insertError } = await supabase.from("agent_settings").insert({
+        client_id: clientId,
+        agent_name: DEFAULTS.agentName,
+        welcome_message: DEFAULTS.welcomeMessage,
+        system_prompt: DEFAULTS.systemPrompt,
+        greeting_audio_url: url,
+        updated_at: new Date().toISOString(),
+      });
+      if (insertError) throw insertError;
+    }
 
     return NextResponse.json({ success: true, url });
   } catch (error: any) {
@@ -80,9 +99,12 @@ export async function DELETE() {
 
     const supabase = getSupabaseAdmin();
     await supabase.storage.from(STORAGE_BUCKET).remove([storagePath(clientId)]);
+    // update(), not upsert() — if no row exists yet there's nothing to reset, and inserting one
+    // here would hit the same NOT NULL problem the POST handler above works around.
     const { error } = await supabase
       .from("agent_settings")
-      .upsert({ client_id: clientId, greeting_audio_url: null, updated_at: new Date().toISOString() }, { onConflict: "client_id" });
+      .update({ greeting_audio_url: null, updated_at: new Date().toISOString() })
+      .eq("client_id", clientId);
     if (error) throw error;
 
     return NextResponse.json({ success: true });
